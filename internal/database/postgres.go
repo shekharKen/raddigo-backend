@@ -43,8 +43,52 @@ func NewGORM(databaseURL string) (*gorm.DB, error) {
 
 // Migrate applies the schema for all models. It is safe to run on every startup.
 func Migrate(db *gorm.DB) error {
-	if err := db.AutoMigrate(&model.User{}, &model.Address{}); err != nil {
+	// PostGIS powers the spatial point-in-polygon ragman search.
+	if err := db.Exec(`CREATE EXTENSION IF NOT EXISTS postgis`).Error; err != nil {
+		return fmt.Errorf("enable postgis: %w", err)
+	}
+
+	if err := db.AutoMigrate(
+		&model.User{},
+		&model.Ragman{},
+		&model.Address{},
+		&model.PolygonPoint{},
+	); err != nil {
 		return fmt.Errorf("auto migrate: %w", err)
+	}
+
+	// Migrate any legacy ragman store addresses into the merged addresses table,
+	// then drop the old table. Idempotent: skipped once the table is gone.
+	if err := db.Exec(`
+		DO $$
+		BEGIN
+			IF to_regclass('public.ragman_store_addresses') IS NOT NULL THEN
+				INSERT INTO addresses (
+					id, type, ragman_id, address1, address2, street, city, state,
+					country, pincode, latitude, longitude, created_at, updated_at
+				)
+				SELECT id, 'ragman_store', ragman_id, address1, address2, street,
+				       city, state, country, pincode, latitude, longitude,
+				       created_at, updated_at
+				FROM ragman_store_addresses
+				ON CONFLICT (id) DO NOTHING;
+				DROP TABLE ragman_store_addresses;
+			END IF;
+		END $$;
+	`).Error; err != nil {
+		return fmt.Errorf("migrate ragman store addresses: %w", err)
+	}
+
+	// A geography(Polygon) column plus a GiST index makes ST_Covers point-in-
+	// polygon lookups use a bounding-box index scan instead of a full table scan.
+	spatial := []string{
+		`ALTER TABLE ragmen ADD COLUMN IF NOT EXISTS service_area geography(Polygon,4326)`,
+		`CREATE INDEX IF NOT EXISTS idx_ragmen_service_area ON ragmen USING GIST (service_area)`,
+	}
+	for _, stmt := range spatial {
+		if err := db.Exec(stmt).Error; err != nil {
+			return fmt.Errorf("spatial migrate: %w", err)
+		}
 	}
 	return nil
 }

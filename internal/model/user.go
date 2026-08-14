@@ -17,20 +17,3 @@ type User struct {
 	CreatedAt       time.Time `json:"created_at"`
 	UpdatedAt       time.Time `json:"updated_at"`
 }
-
-// Address belongs to a User (many addresses per user).
-type Address struct {
-	ID        string    `json:"id" gorm:"type:uuid;primaryKey"`
-	UserID    string    `json:"user_id" gorm:"type:uuid;not null;index"`
-	Address1  string    `json:"address1"`
-	Address2  string    `json:"address2"`
-	Street    string    `json:"street"`
-	City      string    `json:"city"`
-	State     string    `json:"state"`
-	Country   string    `json:"country"`
-	Pincode   string    `json:"pincode"`
-	Latitude  *float64  `json:"latitude" gorm:"column:latitude"`
-	Longitude *float64  `json:"longitude" gorm:"column:longitude"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
-}

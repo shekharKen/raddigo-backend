@@ -9,11 +9,8 @@ import (
 
 	"github.com/raddigo/raddigo/internal/config"
 	"github.com/raddigo/raddigo/internal/database"
-	"github.com/raddigo/raddigo/internal/handler"
-	"github.com/raddigo/raddigo/internal/mailer"
-	"github.com/raddigo/raddigo/internal/repository"
+	"github.com/raddigo/raddigo/internal/di"
 	"github.com/raddigo/raddigo/internal/server"
-	"github.com/raddigo/raddigo/internal/service"
 )
 
 func main() {
@@ -47,14 +44,15 @@ func run(logger *slog.Logger) error {
 		return err
 	}
 
-	userRepo := repository.NewGormUserRepository(db)
-	mail := mailer.NewLogMailer(logger)
-	userSvc := service.NewUserService(userRepo, mail, cfg.AppBaseURL)
+	c := di.New(cfg, logger, db)
 
-	healthHandler := handler.NewHealthHandler()
-	authHandler := handler.NewAuthHandler(userSvc)
-
-	router := server.NewRouter(logger, healthHandler, authHandler)
+	router := server.NewRouter(
+		logger,
+		c.Handlers.Health,
+		c.Handlers.Auth,
+		c.Handlers.Ragman,
+		c.Handlers.Address,
+	)
 	srv := server.New(cfg, logger, router)
 
 	// Run the server and capture a startup failure.

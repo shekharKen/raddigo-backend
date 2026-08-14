@@ -11,7 +11,7 @@ import (
 )
 
 // NewRouter builds the application's Gin engine with middleware and routes.
-func NewRouter(logger *slog.Logger, health *handler.HealthHandler, auth *handler.AuthHandler) http.Handler {
+func NewRouter(logger *slog.Logger, health *handler.HealthHandler, auth *handler.AuthHandler, ragman *handler.RagmanHandler, address *handler.AddressHandler) http.Handler {
 	gin.SetMode(gin.DebugMode)
 
 	router := gin.New()
@@ -21,8 +21,25 @@ func NewRouter(logger *slog.Logger, health *handler.HealthHandler, auth *handler
 
 	v1 := router.Group("/api/v1")
 	{
-		v1.POST("/auth/register", auth.Register)
-		v1.GET("/auth/verify", auth.Verify)
+		authGroup := v1.Group("/auth")
+		{
+			authGroup.POST("/users/register", auth.Register)
+			authGroup.GET("/users/verify", auth.Verify)
+
+			authGroup.POST("/ragman/register", ragman.Register)
+			authGroup.GET("/ragman/verify", ragman.Verify)
+		}
+
+		users := v1.Group("/users")
+		{
+			users.GET("/ragmen/search", ragman.Search)
+
+			users.POST("/:userId/addresses", address.Create)
+			users.GET("/:userId/addresses", address.List)
+			users.GET("/:userId/addresses/:addressId", address.Get)
+			users.PUT("/:userId/addresses/:addressId", address.Update)
+			users.DELETE("/:userId/addresses/:addressId", address.Delete)
+		}
 	}
 
 	return router

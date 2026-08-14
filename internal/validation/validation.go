@@ -90,6 +90,30 @@ func isValidPassword(password string) bool {
 	return hasLower && hasUpper && hasDigit && hasSpecial
 }
 
+// ValidateAddress validates a standalone address payload used by the address
+// CRUD endpoints, returning a utils.ValidationError on the first failing field.
+func ValidateAddress(a dto.AddressRequest) error {
+	if strings.TrimSpace(a.Address1) == "" {
+		return utils.NewValidationError("address1 is required")
+	}
+	if strings.TrimSpace(a.City) == "" {
+		return utils.NewValidationError("city is required")
+	}
+	if strings.TrimSpace(a.Pincode) == "" {
+		return utils.NewValidationError("pincode is required")
+	}
+	if (a.Latitude == nil) != (a.Longitude == nil) {
+		return utils.NewValidationError("latitude and longitude must be provided together")
+	}
+	if a.Latitude != nil && (*a.Latitude < -90 || *a.Latitude > 90) {
+		return utils.NewValidationError("latitude must be between -90 and 90")
+	}
+	if a.Longitude != nil && (*a.Longitude < -180 || *a.Longitude > 180) {
+		return utils.NewValidationError("longitude must be between -180 and 180")
+	}
+	return nil
+}
+
 func validateAddress(index int, a dto.AddressRequest) error {
 	// Latitude and longitude are optional but must be supplied together and
 	// within valid geographic ranges.

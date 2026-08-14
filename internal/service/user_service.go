@@ -82,7 +82,8 @@ func (s *UserService) Register(ctx context.Context, in dto.RegisterRequest) (mod
 		}
 		addresses = append(addresses, model.Address{
 			ID:        s.id(),
-			UserID:    userID,
+			Type:      model.AddressTypeUser,
+			UserID:    &userID,
 			Address1:  strings.TrimSpace(a.Address1),
 			Address2:  address2,
 			Street:    strings.TrimSpace(a.Street),
