@@ -1,0 +1,28 @@
+# Git & CI
+.git
+.gitignore
+.github
+
+# Build artifacts
+bin/
+tmp/
+*.exe
+*.out
+*.test
+coverage.out
+coverage.html
+build-errors.log
+
+# Local env & docs
+.env
+.env.*
+!.env.example
+*.md
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+
+# Air
+.air.toml
