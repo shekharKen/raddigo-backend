@@ -17,6 +17,7 @@ import (
 type PartnerRepository interface {
 	Create(ctx context.Context, partner *model.Partner) error
 	EmailExists(ctx context.Context, email string) (bool, error)
+	GetByEmail(ctx context.Context, email string) (model.Partner, error)
 	GetByVerifyToken(ctx context.Context, token string) (model.Partner, error)
 	MarkEmailVerified(ctx context.Context, id string) error
 	SearchByLocation(ctx context.Context, lat, lng float64, limit, offset int) ([]model.Partner, int64, error)
@@ -113,6 +114,19 @@ func (r *GormPartnerRepository) EmailExists(ctx context.Context, email string) (
 		return false, fmt.Errorf("count partners: %w", err)
 	}
 	return count > 0, nil
+}
+
+// GetByEmail returns the partner with the given email, or ErrNotFound.
+func (r *GormPartnerRepository) GetByEmail(ctx context.Context, email string) (model.Partner, error) {
+	var partner model.Partner
+	if err := r.db.WithContext(ctx).
+		First(&partner, "email = ?", strings.ToLower(strings.TrimSpace(email))).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return model.Partner{}, utils.ErrNotFound
+		}
+		return model.Partner{}, fmt.Errorf("get partner by email: %w", err)
+	}
+	return partner, nil
 }
 
 // GetByVerifyToken returns the partner matching the verification token, or

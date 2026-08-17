@@ -18,17 +18,27 @@ type userService interface {
 	VerifyEmail(ctx context.Context, token string) error
 }
 
+// authService abstracts credential login and token refresh logic.
+type authService interface {
+	LoginUser(ctx context.Context, in dto.LoginRequest) (dto.AuthResponse, error)
+	LoginPartner(ctx context.Context, in dto.LoginRequest) (dto.AuthResponse, error)
+	Refresh(refreshToken string) (dto.AuthResponse, error)
+	IssueForUser(userID string) (dto.AuthResponse, error)
+	IssueForPartner(partnerID string) (dto.AuthResponse, error)
+}
+
 // AuthHandler exposes authentication-related HTTP handlers.
 type AuthHandler struct {
-	svc userService
+	svc  userService
+	auth authService
 }
 
 // NewAuthHandler creates an AuthHandler.
-func NewAuthHandler(svc userService) *AuthHandler {
-	return &AuthHandler{svc: svc}
+func NewAuthHandler(svc userService, auth authService) *AuthHandler {
+	return &AuthHandler{svc: svc, auth: auth}
 }
 
-// Register handles POST /api/v1/auth/register.
+// Register handles POST /api/v1/auth/user/register.
 func (h *AuthHandler) Register(c *gin.Context) {
 	var in dto.RegisterRequest
 	if err := c.ShouldBindJSON(&in); err != nil {
@@ -42,14 +52,50 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		return
 	}
 
+	tokens, err := h.auth.IssueForUser(user.ID)
+	if err != nil {
+		h.writeServiceError(c, err)
+		return
+	}
+
 	c.JSON(http.StatusCreated, gin.H{
 		"message": "registration successful, please check your email to verify your account",
 		"user":    user,
-		"token":   user.VerifyToken,
+		"auth":    tokens,
 	})
 }
 
-// Verify handles GET /api/v1/auth/verify.
+// Login handles POST /api/v1/auth/user/login.
+func (h *AuthHandler) Login(c *gin.Context) {
+	var in dto.LoginRequest
+	if err := c.ShouldBindJSON(&in); err != nil {
+		c.JSON(http.StatusBadRequest, utils.ErrorResponse{Error: "invalid request body"})
+		return
+	}
+	tokens, err := h.auth.LoginUser(c.Request.Context(), in)
+	if err != nil {
+		h.writeServiceError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"auth": tokens})
+}
+
+// Refresh handles POST /api/v1/auth/refresh for users and partners alike.
+func (h *AuthHandler) Refresh(c *gin.Context) {
+	var in dto.RefreshRequest
+	if err := c.ShouldBindJSON(&in); err != nil {
+		c.JSON(http.StatusBadRequest, utils.ErrorResponse{Error: "invalid request body"})
+		return
+	}
+	tokens, err := h.auth.Refresh(in.RefreshToken)
+	if err != nil {
+		h.writeServiceError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"auth": tokens})
+}
+
+// Verify handles GET /api/v1/auth/user/verify.
 func (h *AuthHandler) Verify(c *gin.Context) {
 	token := c.Query("token")
 	if err := h.svc.VerifyEmail(c.Request.Context(), token); err != nil {
@@ -66,8 +112,12 @@ func (h *AuthHandler) writeServiceError(c *gin.Context, err error) {
 		c.JSON(http.StatusBadRequest, utils.ErrorResponse{Error: err.Error()})
 	case errors.Is(err, utils.ErrEmailExists):
 		c.JSON(http.StatusConflict, utils.ErrorResponse{Error: "email already registered"})
+	case errors.Is(err, utils.ErrInvalidCredentials):
+		c.JSON(http.StatusUnauthorized, utils.ErrorResponse{Error: "invalid email or password"})
+	case errors.Is(err, utils.ErrNotVerified):
+		c.JSON(http.StatusForbidden, utils.ErrorResponse{Error: "account not verified, please verify your email"})
 	case errors.Is(err, utils.ErrInvalidToken):
-		c.JSON(http.StatusBadRequest, utils.ErrorResponse{Error: "invalid or expired verification token"})
+		c.JSON(http.StatusUnauthorized, utils.ErrorResponse{Error: "invalid or expired token"})
 	default:
 		c.JSON(http.StatusInternalServerError, utils.ErrorResponse{Error: "internal server error"})
 	}

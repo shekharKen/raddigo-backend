@@ -14,6 +14,9 @@ type Config struct {
 	ShutdownTimeout time.Duration
 	DatabaseURL     string
 	AppBaseURL      string
+	JWTSecret       string
+	AccessTokenTTL  time.Duration
+	RefreshTokenTTL time.Duration
 }
 
 // Load builds a Config from environment variables, falling back to sensible
@@ -27,6 +30,9 @@ func Load() Config {
 		ShutdownTimeout: getDuration("SHUTDOWN_TIMEOUT", 10*time.Second),
 		DatabaseURL:     getEnv("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/raddigo?sslmode=disable"),
 		AppBaseURL:      getEnv("APP_BASE_URL", "http://localhost:8080"),
+		JWTSecret:       getEnv("JWT_SECRET", "dev-secret-change-me"),
+		AccessTokenTTL:  getDuration("ACCESS_TOKEN_TTL", 15*time.Minute),
+		RefreshTokenTTL: getDuration("REFRESH_TOKEN_TTL", 720*time.Hour),
 	}
 }
 

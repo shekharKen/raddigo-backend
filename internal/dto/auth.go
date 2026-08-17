@@ -23,3 +23,23 @@ type AddressRequest struct {
 	Latitude  *float64 `json:"latitude"`
 	Longitude *float64 `json:"longitude"`
 }
+
+// LoginRequest is the payload accepted when authenticating with credentials.
+type LoginRequest struct {
+	Email    string `json:"email"`
+	Password string `json:"password"`
+}
+
+// RefreshRequest carries a refresh token to exchange for a new token pair.
+type RefreshRequest struct {
+	RefreshToken string `json:"refresh_token"`
+}
+
+// AuthResponse is the issued token set returned by login, refresh and register.
+type AuthResponse struct {
+	AccessToken  string     `json:"access_token"`
+	RefreshToken string     `json:"refresh_token"`
+	TokenType    string     `json:"token_type"`
+	ExpiresIn    int64      `json:"expires_in"`
+	Info         any        `json:"info"`
+}

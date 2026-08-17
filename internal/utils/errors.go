@@ -5,10 +5,12 @@ import "errors"
 // ErrNotFound is returned when a requested entity does not exist.
 // Service-level sentinel errors.
 var (
-	ErrValidation   = errors.New("validation failed")
-	ErrEmailExists  = errors.New("email already registered")
-	ErrInvalidToken = errors.New("invalid or expired verification token")
-	ErrNotFound     = errors.New("resource not found")
+	ErrValidation         = errors.New("validation failed")
+	ErrEmailExists        = errors.New("email already registered")
+	ErrInvalidToken       = errors.New("invalid or expired verification token")
+	ErrInvalidCredentials = errors.New("invalid email or password")
+	ErrNotFound           = errors.New("resource not found")
+	ErrNotVerified        = errors.New("account not verified")
 )
 
 // ValidationError carries a human-readable message for a failed validation

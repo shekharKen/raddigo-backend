@@ -10,6 +10,7 @@ import (
 	"github.com/raddigo/raddigo/internal/config"
 	"github.com/raddigo/raddigo/internal/database"
 	"github.com/raddigo/raddigo/internal/di"
+	"github.com/raddigo/raddigo/internal/middleware"
 	"github.com/raddigo/raddigo/internal/server"
 )
 
@@ -53,6 +54,7 @@ func run(logger *slog.Logger) error {
 		c.Handlers.Partner,
 		c.Handlers.Address,
 		c.Handlers.Rating,
+		middleware.Authenticate(c.Tokens),
 	)
 	srv := server.New(cfg, logger, router)
 

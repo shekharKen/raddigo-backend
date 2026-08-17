@@ -5,6 +5,7 @@ import (
 
 	"gorm.io/gorm"
 
+	"github.com/raddigo/raddigo/internal/auth"
 	"github.com/raddigo/raddigo/internal/config"
 	"github.com/raddigo/raddigo/internal/handler"
 	"github.com/raddigo/raddigo/internal/mailer"
@@ -26,6 +27,7 @@ type Services struct {
 	Partner *service.PartnerService
 	Address *service.AddressService
 	Rating  *service.RatingService
+	Auth    *service.AuthService
 }
 
 // Handlers groups the HTTP layer.
@@ -42,6 +44,7 @@ type Container struct {
 	Repositories Repositories
 	Services     Services
 	Handlers     Handlers
+	Tokens       *auth.TokenService
 }
 
 // New builds the dependency graph layer by layer: repositories, then services,
@@ -49,13 +52,15 @@ type Container struct {
 func New(cfg config.Config, logger *slog.Logger, db *gorm.DB) *Container {
 	repos := buildRepositories(db)
 	mail := mailer.NewLogMailer(logger)
-	services := buildServices(cfg, repos, mail)
+	tokens := auth.NewTokenService(cfg.JWTSecret, cfg.AccessTokenTTL, cfg.RefreshTokenTTL)
+	services := buildServices(cfg, repos, mail, tokens)
 	handlers := buildHandlers(services)
 
 	return &Container{
 		Repositories: repos,
 		Services:     services,
 		Handlers:     handlers,
+		Tokens:       tokens,
 	}
 }
 
@@ -68,20 +73,21 @@ func buildRepositories(db *gorm.DB) Repositories {
 	}
 }
 
-func buildServices(cfg config.Config, repos Repositories, mail mailer.Mailer) Services {
+func buildServices(cfg config.Config, repos Repositories, mail mailer.Mailer, tokens *auth.TokenService) Services {
 	return Services{
 		User:    service.NewUserService(repos.User, mail, cfg.AppBaseURL),
 		Partner: service.NewPartnerService(repos.Partner, repos.Rating, mail, cfg.AppBaseURL),
 		Address: service.NewAddressService(repos.Address),
 		Rating:  service.NewRatingService(repos.Rating),
+		Auth:    service.NewAuthService(repos.User, repos.Partner, tokens),
 	}
 }
 
 func buildHandlers(services Services) Handlers {
 	return Handlers{
 		Health:  handler.NewHealthHandler(),
-		Auth:    handler.NewAuthHandler(services.User),
-		Partner: handler.NewPartnerHandler(services.Partner),
+		Auth:    handler.NewAuthHandler(services.User, services.Auth),
+		Partner: handler.NewPartnerHandler(services.Partner, services.Auth),
 		Address: handler.NewAddressHandler(services.Address),
 		Rating:  handler.NewRatingHandler(services.Rating),
 	}

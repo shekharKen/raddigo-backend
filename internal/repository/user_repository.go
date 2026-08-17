@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"gorm.io/gorm"
 
@@ -15,6 +16,7 @@ import (
 type UserRepository interface {
 	Create(ctx context.Context, user *model.User) error
 	EmailExists(ctx context.Context, email string) (bool, error)
+	GetByEmail(ctx context.Context, email string) (model.User, error)
 	GetByVerifyToken(ctx context.Context, token string) (model.User, error)
 	MarkEmailVerified(ctx context.Context, id string) error
 }
@@ -47,6 +49,19 @@ func (r *GormUserRepository) EmailExists(ctx context.Context, email string) (boo
 		return false, fmt.Errorf("count users: %w", err)
 	}
 	return count > 0, nil
+}
+
+// GetByEmail returns the user with the given email, or ErrNotFound.
+func (r *GormUserRepository) GetByEmail(ctx context.Context, email string) (model.User, error) {
+	var user model.User
+	if err := r.db.WithContext(ctx).
+		First(&user, "email = ?", strings.ToLower(strings.TrimSpace(email))).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return model.User{}, utils.ErrNotFound
+		}
+		return model.User{}, fmt.Errorf("get user by email: %w", err)
+	}
+	return user, nil
 }
 
 // GetByVerifyToken returns the user matching the verification token, or

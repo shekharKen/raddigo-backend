@@ -22,12 +22,13 @@ type partnerService interface {
 
 // PartnerHandler exposes partner authentication-related HTTP handlers.
 type PartnerHandler struct {
-	svc partnerService
+	svc  partnerService
+	auth authService
 }
 
 // NewPartnerHandler creates a PartnerHandler.
-func NewPartnerHandler(svc partnerService) *PartnerHandler {
-	return &PartnerHandler{svc: svc}
+func NewPartnerHandler(svc partnerService, auth authService) *PartnerHandler {
+	return &PartnerHandler{svc: svc, auth: auth}
 }
 
 // Register handles POST /api/v1/auth/partner/register.
@@ -44,11 +45,32 @@ func (h *PartnerHandler) Register(c *gin.Context) {
 		return
 	}
 
+	tokens, err := h.auth.IssueForPartner(partner.ID)
+	if err != nil {
+		h.writeServiceError(c, err)
+		return
+	}
+
 	c.JSON(http.StatusCreated, gin.H{
 		"message": "registration successful, please check your email to verify your account",
 		"partner": partner,
-		"token":   partner.VerifyToken,
+		"auth":    tokens,
 	})
+}
+
+// Login handles POST /api/v1/auth/partner/login.
+func (h *PartnerHandler) Login(c *gin.Context) {
+	var in dto.LoginRequest
+	if err := c.ShouldBindJSON(&in); err != nil {
+		c.JSON(http.StatusBadRequest, utils.ErrorResponse{Error: "invalid request body"})
+		return
+	}
+	tokens, err := h.auth.LoginPartner(c.Request.Context(), in)
+	if err != nil {
+		h.writeServiceError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"auth": tokens})
 }
 
 // Verify handles GET /api/v1/auth/partner/verify.
@@ -93,6 +115,10 @@ func (h *PartnerHandler) writeServiceError(c *gin.Context, err error) {
 		c.JSON(http.StatusBadRequest, utils.ErrorResponse{Error: err.Error()})
 	case errors.Is(err, utils.ErrEmailExists):
 		c.JSON(http.StatusConflict, utils.ErrorResponse{Error: "email already registered"})
+	case errors.Is(err, utils.ErrInvalidCredentials):
+		c.JSON(http.StatusUnauthorized, utils.ErrorResponse{Error: "invalid email or password"})
+	case errors.Is(err, utils.ErrNotVerified):
+		c.JSON(http.StatusForbidden, utils.ErrorResponse{Error: "account not verified, please verify your email"})
 	case errors.Is(err, utils.ErrInvalidToken):
 		c.JSON(http.StatusBadRequest, utils.ErrorResponse{Error: "invalid or expired verification token"})
 	default:
