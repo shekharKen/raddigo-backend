@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"net/url"
 	"strings"
 	"time"
@@ -22,6 +23,7 @@ import (
 // PartnerService contains partner registration and verification logic.
 type PartnerService struct {
 	repo    repository.PartnerRepository
+	ratings repository.RatingRepository
 	mailer  mailer.Mailer
 	baseURL string
 	now     func() time.Time
@@ -30,9 +32,10 @@ type PartnerService struct {
 }
 
 // NewPartnerService creates a PartnerService.
-func NewPartnerService(repo repository.PartnerRepository, m mailer.Mailer, baseURL string) *PartnerService {
+func NewPartnerService(repo repository.PartnerRepository, ratings repository.RatingRepository, m mailer.Mailer, baseURL string) *PartnerService {
 	return &PartnerService{
 		repo:    repo,
+		ratings: ratings,
 		mailer:  m,
 		baseURL: strings.TrimRight(baseURL, "/"),
 		now:     time.Now,
@@ -165,6 +168,15 @@ func (s *PartnerService) SearchByLocation(ctx context.Context, lat, lng float64,
 		return dto.PageResult[dto.PartnerSearchResult]{}, err
 	}
 
+	partnerIDs := make([]string, 0, len(partners))
+	for _, r := range partners {
+		partnerIDs = append(partnerIDs, r.ID)
+	}
+	stats, err := s.ratings.SummaryByPartnerIDs(ctx, partnerIDs)
+	if err != nil {
+		return dto.PageResult[dto.PartnerSearchResult]{}, err
+	}
+
 	results := make([]dto.PartnerSearchResult, 0, len(partners))
 	for _, r := range partners {
 		res := dto.PartnerSearchResult{
@@ -175,6 +187,10 @@ func (s *PartnerService) SearchByLocation(ctx context.Context, lat, lng float64,
 			MobileExtension: r.MobileExtension,
 			MobileNo:        r.MobileNo,
 			StoreName:       r.StoreName,
+		}
+		if stat, ok := stats[r.ID]; ok {
+			res.AverageRating = math.Round(stat.Average*100) / 100
+			res.TotalRatings = stat.Total
 		}
 		if r.StoreAddress != nil {
 			res.StoreAddress = &dto.AddressResponse{

@@ -52,6 +52,7 @@ func run(logger *slog.Logger) error {
 		c.Handlers.Auth,
 		c.Handlers.Partner,
 		c.Handlers.Address,
+		c.Handlers.Rating,
 	)
 	srv := server.New(cfg, logger, router)
 

@@ -17,6 +17,7 @@ type Repositories struct {
 	User    repository.UserRepository
 	Partner repository.PartnerRepository
 	Address repository.AddressRepository
+	Rating  repository.RatingRepository
 }
 
 // Services groups the business-logic layer.
@@ -24,6 +25,7 @@ type Services struct {
 	User    *service.UserService
 	Partner *service.PartnerService
 	Address *service.AddressService
+	Rating  *service.RatingService
 }
 
 // Handlers groups the HTTP layer.
@@ -32,6 +34,7 @@ type Handlers struct {
 	Auth    *handler.AuthHandler
 	Partner *handler.PartnerHandler
 	Address *handler.AddressHandler
+	Rating  *handler.RatingHandler
 }
 
 // Container holds the fully wired application dependencies.
@@ -61,14 +64,16 @@ func buildRepositories(db *gorm.DB) Repositories {
 		User:    repository.NewGormUserRepository(db),
 		Partner: repository.NewGormPartnerRepository(db),
 		Address: repository.NewGormAddressRepository(db),
+		Rating:  repository.NewGormRatingRepository(db),
 	}
 }
 
 func buildServices(cfg config.Config, repos Repositories, mail mailer.Mailer) Services {
 	return Services{
 		User:    service.NewUserService(repos.User, mail, cfg.AppBaseURL),
-		Partner: service.NewPartnerService(repos.Partner, mail, cfg.AppBaseURL),
+		Partner: service.NewPartnerService(repos.Partner, repos.Rating, mail, cfg.AppBaseURL),
 		Address: service.NewAddressService(repos.Address),
+		Rating:  service.NewRatingService(repos.Rating),
 	}
 }
 
@@ -78,5 +83,6 @@ func buildHandlers(services Services) Handlers {
 		Auth:    handler.NewAuthHandler(services.User),
 		Partner: handler.NewPartnerHandler(services.Partner),
 		Address: handler.NewAddressHandler(services.Address),
+		Rating:  handler.NewRatingHandler(services.Rating),
 	}
 }

@@ -53,6 +53,7 @@ func Migrate(db *gorm.DB) error {
 		&model.Partner{},
 		&model.Address{},
 		&model.PolygonPoint{},
+		&model.Rating{},
 	); err != nil {
 		return fmt.Errorf("auto migrate: %w", err)
 	}

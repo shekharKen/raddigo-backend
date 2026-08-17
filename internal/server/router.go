@@ -17,6 +17,7 @@ func NewRouter(
 	auth *handler.AuthHandler,
 	partner *handler.PartnerHandler,
 	address *handler.AddressHandler,
+	rating *handler.RatingHandler,
 ) http.Handler {
 	gin.SetMode(gin.DebugMode)
 
@@ -45,6 +46,17 @@ func NewRouter(
 			users.GET("/:userId/addresses/:addressId", address.Get)
 			users.PUT("/:userId/addresses/:addressId", address.Update)
 			users.DELETE("/:userId/addresses/:addressId", address.Delete)
+
+			users.POST("/:userId/partner/:partnerId/rating", rating.RatePartner)
+			users.GET("/:userId/ratings", rating.ListForUser)
+			users.GET("/:userId/rating-summary", rating.SummaryForUser)
+		}
+
+		partners := v1.Group("/partner")
+		{
+			partners.POST("/:partnerId/user/:userId/rating", rating.RateUser)
+			partners.GET("/:partnerId/ratings", rating.ListForPartner)
+			partners.GET("/:partnerId/rating-summary", rating.SummaryForPartner)
 		}
 	}
 

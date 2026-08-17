@@ -30,4 +30,6 @@ type PartnerSearchResult struct {
 	MobileNo        string           `json:"mobile_no"`
 	StoreName       string           `json:"store_name"`
 	StoreAddress    *AddressResponse `json:"store_address,omitempty"`
+	AverageRating   float64          `json:"average_rating"`
+	TotalRatings    int64            `json:"total_ratings"`
 }
