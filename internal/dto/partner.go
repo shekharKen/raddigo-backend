@@ -1,7 +1,7 @@
 package dto
 
-// RegisterRagmanRequest is the payload accepted when registering a new ragman.
-type RegisterRagmanRequest struct {
+// RegisterPartnerRequest is the payload accepted when registering a new partner.
+type RegisterPartnerRequest struct {
 	FirstName       string                `json:"first_name"`
 	LastName        string                `json:"last_name"`
 	Email           string                `json:"email"`
@@ -13,15 +13,15 @@ type RegisterRagmanRequest struct {
 	Polygon         []PolygonPointRequest `json:"polygon"`
 }
 
-// PolygonPointRequest is a single vertex of the ragman's operating area.
+// PolygonPointRequest is a single vertex of the partner's operating area.
 // The ordering of the slice defines the polygon boundary.
 type PolygonPointRequest struct {
 	Latitude  float64 `json:"latitude"`
 	Longitude float64 `json:"longitude"`
 }
 
-// RagmanSearchResult is a ragman returned by a location search.
-type RagmanSearchResult struct {
+// PartnerSearchResult is a partner returned by a location search.
+type PartnerSearchResult struct {
 	ID              string           `json:"id"`
 	FirstName       string           `json:"first_name"`
 	LastName        string           `json:"last_name"`

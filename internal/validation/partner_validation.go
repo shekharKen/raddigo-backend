@@ -14,10 +14,10 @@ const (
 	maxStoreLength   = 100
 )
 
-// ValidateRegisterRagman validates a ragman registration request, returning a
+// ValidateRegisterPartner validates a partner registration request, returning a
 // utils.ValidationError (which matches utils.ErrValidation) describing the
 // first field that fails.
-func ValidateRegisterRagman(in dto.RegisterRagmanRequest) error {
+func ValidateRegisterPartner(in dto.RegisterPartnerRequest) error {
 	if !isValidName(in.FirstName) {
 		return utils.NewValidationError("first name is invalid: use letters only, up to 50 characters")
 	}

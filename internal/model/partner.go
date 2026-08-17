@@ -2,8 +2,8 @@ package model
 
 import "time"
 
-// Ragman is a scrap dealer account with a store and an operating-area polygon.
-type Ragman struct {
+// Partner is a scrap dealer account with a store and an operating-area polygon.
+type Partner struct {
 	ID              string         `json:"id" gorm:"type:uuid;primaryKey"`
 	FirstName       string         `json:"first_name" gorm:"not null"`
 	LastName        string         `json:"last_name" gorm:"not null"`
@@ -12,7 +12,7 @@ type Ragman struct {
 	MobileNo        string         `json:"mobile_no" gorm:"not null"`
 	Password        string         `json:"-" gorm:"not null"`
 	StoreName       string         `json:"store_name" gorm:"not null"`
-	StoreAddress    *Address       `json:"store_address" gorm:"foreignKey:RagmanID;constraint:OnDelete:CASCADE"`
+	StoreAddress    *Address       `json:"store_address" gorm:"foreignKey:PartnerID;constraint:OnDelete:CASCADE"`
 	EmailVerified   bool           `json:"email_verified" gorm:"not null;default:false"`
 	VerifyToken     string         `json:"-" gorm:"index"`
 	ServiceArea     []PolygonPoint `json:"service_area" gorm:"constraint:OnDelete:CASCADE"`
@@ -20,10 +20,10 @@ type Ragman struct {
 	UpdatedAt       time.Time      `json:"updated_at"`
 }
 
-// PolygonPoint is a single ordered vertex of a Ragman's operating-area polygon.
+// PolygonPoint is a single ordered vertex of a Partner's operating-area polygon.
 type PolygonPoint struct {
 	ID        string    `json:"id" gorm:"type:uuid;primaryKey"`
-	RagmanID  string    `json:"ragman_id" gorm:"type:uuid;not null;index"`
+	PartnerID string    `json:"partner_id" gorm:"type:uuid;not null;index"`
 	Sequence  int       `json:"sequence" gorm:"not null"`
 	Latitude  float64   `json:"latitude" gorm:"not null"`
 	Longitude float64   `json:"longitude" gorm:"not null"`

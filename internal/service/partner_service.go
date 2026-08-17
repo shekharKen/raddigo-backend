@@ -19,9 +19,9 @@ import (
 	"github.com/raddigo/raddigo/internal/validation"
 )
 
-// RagmanService contains ragman registration and verification logic.
-type RagmanService struct {
-	repo    repository.RagmanRepository
+// PartnerService contains partner registration and verification logic.
+type PartnerService struct {
+	repo    repository.PartnerRepository
 	mailer  mailer.Mailer
 	baseURL string
 	now     func() time.Time
@@ -29,9 +29,9 @@ type RagmanService struct {
 	token   func() (string, error)
 }
 
-// NewRagmanService creates a RagmanService.
-func NewRagmanService(repo repository.RagmanRepository, m mailer.Mailer, baseURL string) *RagmanService {
-	return &RagmanService{
+// NewPartnerService creates a PartnerService.
+func NewPartnerService(repo repository.PartnerRepository, m mailer.Mailer, baseURL string) *PartnerService {
+	return &PartnerService{
 		repo:    repo,
 		mailer:  m,
 		baseURL: strings.TrimRight(baseURL, "/"),
@@ -41,40 +41,40 @@ func NewRagmanService(repo repository.RagmanRepository, m mailer.Mailer, baseURL
 	}
 }
 
-// Register validates the input, persists the ragman with its operating-area
+// Register validates the input, persists the partner with its operating-area
 // polygon, and sends a verification email.
-func (s *RagmanService) Register(ctx context.Context, in dto.RegisterRagmanRequest) (model.Ragman, error) {
-	if err := validation.ValidateRegisterRagman(in); err != nil {
-		return model.Ragman{}, err
+func (s *PartnerService) Register(ctx context.Context, in dto.RegisterPartnerRequest) (model.Partner, error) {
+	if err := validation.ValidateRegisterPartner(in); err != nil {
+		return model.Partner{}, err
 	}
 
 	email := strings.ToLower(strings.TrimSpace(in.Email))
 	exists, err := s.repo.EmailExists(ctx, email)
 	if err != nil {
-		return model.Ragman{}, err
+		return model.Partner{}, err
 	}
 	if exists {
-		return model.Ragman{}, utils.ErrEmailExists
+		return model.Partner{}, utils.ErrEmailExists
 	}
 
 	hashed, err := bcrypt.GenerateFromPassword([]byte(in.Password), bcrypt.DefaultCost)
 	if err != nil {
-		return model.Ragman{}, fmt.Errorf("hash password: %w", err)
+		return model.Partner{}, fmt.Errorf("hash password: %w", err)
 	}
 
 	token, err := s.token()
 	if err != nil {
-		return model.Ragman{}, fmt.Errorf("generate token: %w", err)
+		return model.Partner{}, fmt.Errorf("generate token: %w", err)
 	}
 
 	now := s.now()
-	ragmanID := s.id()
+	partnerID := s.id()
 
 	points := make([]model.PolygonPoint, 0, len(in.Polygon))
 	for i, p := range in.Polygon {
 		points = append(points, model.PolygonPoint{
 			ID:        s.id(),
-			RagmanID:  ragmanID,
+			PartnerID: partnerID,
 			Sequence:  i,
 			Latitude:  p.Latitude,
 			Longitude: p.Longitude,
@@ -85,8 +85,8 @@ func (s *RagmanService) Register(ctx context.Context, in dto.RegisterRagmanReque
 
 	storeAddress := &model.Address{
 		ID:        s.id(),
-		Type:      model.AddressTypeRagmanStore,
-		RagmanID:  &ragmanID,
+		Type:      model.AddressTypePartnerStore,
+		PartnerID: &partnerID,
 		Address1:  strings.TrimSpace(in.StoreAddress.Address1),
 		Address2:  trimPtr(in.StoreAddress.Address2),
 		Street:    strings.TrimSpace(in.StoreAddress.Street),
@@ -100,8 +100,8 @@ func (s *RagmanService) Register(ctx context.Context, in dto.RegisterRagmanReque
 		UpdatedAt: now,
 	}
 
-	ragman := model.Ragman{
-		ID:              ragmanID,
+	partner := model.Partner{
+		ID:              partnerID,
 		FirstName:       strings.TrimSpace(in.FirstName),
 		LastName:        strings.TrimSpace(in.LastName),
 		Email:           email,
@@ -117,26 +117,26 @@ func (s *RagmanService) Register(ctx context.Context, in dto.RegisterRagmanReque
 		UpdatedAt:       now,
 	}
 
-	if err := s.repo.Create(ctx, &ragman); err != nil {
-		return model.Ragman{}, err
+	if err := s.repo.Create(ctx, &partner); err != nil {
+		return model.Partner{}, err
 	}
 
-	verifyURL := fmt.Sprintf("%s/api/v1/auth/ragman/verify?token=%s", s.baseURL, url.QueryEscape(token))
-	if err := s.mailer.SendVerificationEmail(ctx, ragman.Email, verifyURL); err != nil {
-		return model.Ragman{}, fmt.Errorf("send verification email: %w", err)
+	verifyURL := fmt.Sprintf("%s/api/v1/auth/partner/verify?token=%s", s.baseURL, url.QueryEscape(token))
+	if err := s.mailer.SendVerificationEmail(ctx, partner.Email, verifyURL); err != nil {
+		return model.Partner{}, fmt.Errorf("send verification email: %w", err)
 	}
 
-	return ragman, nil
+	return partner, nil
 }
 
-// VerifyEmail marks the ragman owning the token as verified.
-func (s *RagmanService) VerifyEmail(ctx context.Context, token string) error {
+// VerifyEmail marks the partner owning the token as verified.
+func (s *PartnerService) VerifyEmail(ctx context.Context, token string) error {
 	token = strings.TrimSpace(token)
 	if token == "" {
 		return utils.ErrInvalidToken
 	}
 
-	ragman, err := s.repo.GetByVerifyToken(ctx, token)
+	partner, err := s.repo.GetByVerifyToken(ctx, token)
 	if err != nil {
 		if errors.Is(err, utils.ErrNotFound) {
 			return utils.ErrInvalidToken
@@ -144,30 +144,30 @@ func (s *RagmanService) VerifyEmail(ctx context.Context, token string) error {
 		return err
 	}
 
-	return s.repo.MarkEmailVerified(ctx, ragman.ID)
+	return s.repo.MarkEmailVerified(ctx, partner.ID)
 }
 
-// SearchByLocation returns a paginated set of verified ragmen whose operating
+// SearchByLocation returns a paginated set of verified partners whose operating
 // area covers the given coordinates.
-func (s *RagmanService) SearchByLocation(ctx context.Context, lat, lng float64, page, pageSize int) (dto.PageResult[dto.RagmanSearchResult], error) {
+func (s *PartnerService) SearchByLocation(ctx context.Context, lat, lng float64, page, pageSize int) (dto.PageResult[dto.PartnerSearchResult], error) {
 	if lat < -90 || lat > 90 {
-		return dto.PageResult[dto.RagmanSearchResult]{}, utils.NewValidationError("latitude must be between -90 and 90")
+		return dto.PageResult[dto.PartnerSearchResult]{}, utils.NewValidationError("latitude must be between -90 and 90")
 	}
 	if lng < -180 || lng > 180 {
-		return dto.PageResult[dto.RagmanSearchResult]{}, utils.NewValidationError("longitude must be between -180 and 180")
+		return dto.PageResult[dto.PartnerSearchResult]{}, utils.NewValidationError("longitude must be between -180 and 180")
 	}
 
 	page, pageSize = dto.NormalizePageParams(page, pageSize)
 	offset := (page - 1) * pageSize
 
-	ragmen, total, err := s.repo.SearchByLocation(ctx, lat, lng, pageSize, offset)
+	partners, total, err := s.repo.SearchByLocation(ctx, lat, lng, pageSize, offset)
 	if err != nil {
-		return dto.PageResult[dto.RagmanSearchResult]{}, err
+		return dto.PageResult[dto.PartnerSearchResult]{}, err
 	}
 
-	results := make([]dto.RagmanSearchResult, 0, len(ragmen))
-	for _, r := range ragmen {
-		res := dto.RagmanSearchResult{
+	results := make([]dto.PartnerSearchResult, 0, len(partners))
+	for _, r := range partners {
+		res := dto.PartnerSearchResult{
 			ID:              r.ID,
 			FirstName:       r.FirstName,
 			LastName:        r.LastName,
@@ -194,7 +194,7 @@ func (s *RagmanService) SearchByLocation(ctx context.Context, lat, lng float64, 
 		results = append(results, res)
 	}
 
-	return dto.PageResult[dto.RagmanSearchResult]{
+	return dto.PageResult[dto.PartnerSearchResult]{
 		Data:       results,
 		Pagination: dto.NewPagination(page, pageSize, total),
 	}, nil

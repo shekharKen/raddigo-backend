@@ -13,32 +13,32 @@ import (
 	"github.com/raddigo/raddigo/internal/utils"
 )
 
-// ragmanService abstracts ragman registration and verification logic.
-type ragmanService interface {
-	Register(ctx context.Context, in dto.RegisterRagmanRequest) (model.Ragman, error)
+// partnerService abstracts partner registration and verification logic.
+type partnerService interface {
+	Register(ctx context.Context, in dto.RegisterPartnerRequest) (model.Partner, error)
 	VerifyEmail(ctx context.Context, token string) error
-	SearchByLocation(ctx context.Context, lat, lng float64, page, pageSize int) (dto.PageResult[dto.RagmanSearchResult], error)
+	SearchByLocation(ctx context.Context, lat, lng float64, page, pageSize int) (dto.PageResult[dto.PartnerSearchResult], error)
 }
 
-// RagmanHandler exposes ragman authentication-related HTTP handlers.
-type RagmanHandler struct {
-	svc ragmanService
+// PartnerHandler exposes partner authentication-related HTTP handlers.
+type PartnerHandler struct {
+	svc partnerService
 }
 
-// NewRagmanHandler creates a RagmanHandler.
-func NewRagmanHandler(svc ragmanService) *RagmanHandler {
-	return &RagmanHandler{svc: svc}
+// NewPartnerHandler creates a PartnerHandler.
+func NewPartnerHandler(svc partnerService) *PartnerHandler {
+	return &PartnerHandler{svc: svc}
 }
 
-// Register handles POST /api/v1/auth/ragman/register.
-func (h *RagmanHandler) Register(c *gin.Context) {
-	var in dto.RegisterRagmanRequest
+// Register handles POST /api/v1/auth/partner/register.
+func (h *PartnerHandler) Register(c *gin.Context) {
+	var in dto.RegisterPartnerRequest
 	if err := c.ShouldBindJSON(&in); err != nil {
 		c.JSON(http.StatusBadRequest, utils.ErrorResponse{Error: "invalid request body"})
 		return
 	}
 
-	ragman, err := h.svc.Register(c.Request.Context(), in)
+	partner, err := h.svc.Register(c.Request.Context(), in)
 	if err != nil {
 		h.writeServiceError(c, err)
 		return
@@ -46,13 +46,13 @@ func (h *RagmanHandler) Register(c *gin.Context) {
 
 	c.JSON(http.StatusCreated, gin.H{
 		"message": "registration successful, please check your email to verify your account",
-		"ragman":  ragman,
-		"token":   ragman.VerifyToken,
+		"partner": partner,
+		"token":   partner.VerifyToken,
 	})
 }
 
-// Verify handles GET /api/v1/auth/ragman/verify.
-func (h *RagmanHandler) Verify(c *gin.Context) {
+// Verify handles GET /api/v1/auth/partner/verify.
+func (h *PartnerHandler) Verify(c *gin.Context) {
 	token := c.Query("token")
 	if err := h.svc.VerifyEmail(c.Request.Context(), token); err != nil {
 		h.writeServiceError(c, err)
@@ -62,7 +62,7 @@ func (h *RagmanHandler) Verify(c *gin.Context) {
 }
 
 // whose operating area covers the caller's current location.
-func (h *RagmanHandler) Search(c *gin.Context) {
+func (h *PartnerHandler) Search(c *gin.Context) {
 	lat, err := strconv.ParseFloat(c.Query("latitude"), 64)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, utils.ErrorResponse{Error: "latitude is required and must be a number"})
@@ -87,7 +87,7 @@ func (h *RagmanHandler) Search(c *gin.Context) {
 }
 
 // writeServiceError maps domain errors to HTTP responses.
-func (h *RagmanHandler) writeServiceError(c *gin.Context, err error) {
+func (h *PartnerHandler) writeServiceError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, utils.ErrValidation):
 		c.JSON(http.StatusBadRequest, utils.ErrorResponse{Error: err.Error()})

@@ -13,39 +13,39 @@ import (
 	"github.com/raddigo/raddigo/internal/utils"
 )
 
-// RagmanRepository defines persistence operations for ragmen.
-type RagmanRepository interface {
-	Create(ctx context.Context, ragman *model.Ragman) error
+// PartnerRepository defines persistence operations for partners.
+type PartnerRepository interface {
+	Create(ctx context.Context, partner *model.Partner) error
 	EmailExists(ctx context.Context, email string) (bool, error)
-	GetByVerifyToken(ctx context.Context, token string) (model.Ragman, error)
+	GetByVerifyToken(ctx context.Context, token string) (model.Partner, error)
 	MarkEmailVerified(ctx context.Context, id string) error
-	SearchByLocation(ctx context.Context, lat, lng float64, limit, offset int) ([]model.Ragman, int64, error)
+	SearchByLocation(ctx context.Context, lat, lng float64, limit, offset int) ([]model.Partner, int64, error)
 }
 
-// GormRagmanRepository is a GORM-backed RagmanRepository.
-type GormRagmanRepository struct {
+// GormPartnerRepository is a GORM-backed PartnerRepository.
+type GormPartnerRepository struct {
 	db *gorm.DB
 }
 
-// NewGormRagmanRepository creates a GormRagmanRepository.
-func NewGormRagmanRepository(db *gorm.DB) *GormRagmanRepository {
-	return &GormRagmanRepository{db: db}
+// NewGormPartnerRepository creates a GormPartnerRepository.
+func NewGormPartnerRepository(db *gorm.DB) *GormPartnerRepository {
+	return &GormPartnerRepository{db: db}
 }
 
-// Create stores a new ragman together with its operating-area polygon and
+// Create stores a new partner together with its operating-area polygon and
 // derives the indexed geography(Polygon) column used for spatial search.
-func (r *GormRagmanRepository) Create(ctx context.Context, ragman *model.Ragman) error {
+func (r *GormPartnerRepository) Create(ctx context.Context, partner *model.Partner) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := tx.Create(ragman).Error; err != nil {
-			return fmt.Errorf("create ragman: %w", err)
+		if err := tx.Create(partner).Error; err != nil {
+			return fmt.Errorf("create partner: %w", err)
 		}
-		wkt := polygonWKT(ragman.ServiceArea)
+		wkt := polygonWKT(partner.ServiceArea)
 		if wkt == "" {
 			return nil
 		}
 		if err := tx.Exec(
-			`UPDATE ragmen SET service_area = ST_GeogFromText(?) WHERE id = ?`,
-			wkt, ragman.ID,
+			`UPDATE partners SET service_area = ST_GeogFromText(?) WHERE id = ?`,
+			wkt, partner.ID,
 		).Error; err != nil {
 			return fmt.Errorf("set service area: %w", err)
 		}
@@ -53,12 +53,12 @@ func (r *GormRagmanRepository) Create(ctx context.Context, ragman *model.Ragman)
 	})
 }
 
-// SearchByLocation returns a paginated set of verified ragmen whose operating-
+// SearchByLocation returns a paginated set of verified partners whose operating-
 // area polygon covers the given point. ST_Covers uses the GiST index on
 // service_area for an index-backed bounding-box scan.
-func (r *GormRagmanRepository) SearchByLocation(ctx context.Context, lat, lng float64, limit, offset int) ([]model.Ragman, int64, error) {
+func (r *GormPartnerRepository) SearchByLocation(ctx context.Context, lat, lng float64, limit, offset int) ([]model.Partner, int64, error) {
 	cond := func(db *gorm.DB) *gorm.DB {
-		return db.Model(&model.Ragman{}).
+		return db.Model(&model.Partner{}).
 			Where("email_verified = ?", true).
 			Where("service_area IS NOT NULL").
 			Where("ST_Covers(service_area, ST_SetSRID(ST_MakePoint(?, ?), 4326)::geography)", lng, lat)
@@ -66,19 +66,19 @@ func (r *GormRagmanRepository) SearchByLocation(ctx context.Context, lat, lng fl
 
 	var total int64
 	if err := cond(r.db.WithContext(ctx)).Count(&total).Error; err != nil {
-		return nil, 0, fmt.Errorf("count ragmen by location: %w", err)
+		return nil, 0, fmt.Errorf("count partners by location: %w", err)
 	}
 
-	var ragmen []model.Ragman
+	var partners []model.Partner
 	if err := cond(r.db.WithContext(ctx)).
 		Preload("StoreAddress").
 		Order("created_at DESC").
 		Limit(limit).
 		Offset(offset).
-		Find(&ragmen).Error; err != nil {
-		return nil, 0, fmt.Errorf("search ragmen by location: %w", err)
+		Find(&partners).Error; err != nil {
+		return nil, 0, fmt.Errorf("search partners by location: %w", err)
 	}
-	return ragmen, total, nil
+	return partners, total, nil
 }
 
 // polygonWKT builds a closed WKT polygon ring (SRID 4326) from ordered points.
@@ -103,38 +103,38 @@ func coordPair(lng, lat float64) string {
 	return strconv.FormatFloat(lng, 'f', -1, 64) + " " + strconv.FormatFloat(lat, 'f', -1, 64)
 }
 
-// EmailExists reports whether a ragman with the given email already exists.
-func (r *GormRagmanRepository) EmailExists(ctx context.Context, email string) (bool, error) {
+// EmailExists reports whether a partner with the given email already exists.
+func (r *GormPartnerRepository) EmailExists(ctx context.Context, email string) (bool, error) {
 	var count int64
 	if err := r.db.WithContext(ctx).
-		Model(&model.Ragman{}).
+		Model(&model.Partner{}).
 		Where("email = ?", email).
 		Count(&count).Error; err != nil {
-		return false, fmt.Errorf("count ragmen: %w", err)
+		return false, fmt.Errorf("count partners: %w", err)
 	}
 	return count > 0, nil
 }
 
-// GetByVerifyToken returns the ragman matching the verification token, or
+// GetByVerifyToken returns the partner matching the verification token, or
 // ErrNotFound if none matches.
-func (r *GormRagmanRepository) GetByVerifyToken(ctx context.Context, token string) (model.Ragman, error) {
-	var ragman model.Ragman
+func (r *GormPartnerRepository) GetByVerifyToken(ctx context.Context, token string) (model.Partner, error) {
+	var partner model.Partner
 	if err := r.db.WithContext(ctx).
 		Preload("ServiceArea").
 		Preload("StoreAddress").
-		First(&ragman, "verify_token = ?", token).Error; err != nil {
+		First(&partner, "verify_token = ?", token).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return model.Ragman{}, utils.ErrNotFound
+			return model.Partner{}, utils.ErrNotFound
 		}
-		return model.Ragman{}, fmt.Errorf("get ragman by token: %w", err)
+		return model.Partner{}, fmt.Errorf("get partner by token: %w", err)
 	}
-	return ragman, nil
+	return partner, nil
 }
 
-// MarkEmailVerified flags the ragman as verified and clears the token.
-func (r *GormRagmanRepository) MarkEmailVerified(ctx context.Context, id string) error {
+// MarkEmailVerified flags the partner as verified and clears the token.
+func (r *GormPartnerRepository) MarkEmailVerified(ctx context.Context, id string) error {
 	res := r.db.WithContext(ctx).
-		Model(&model.Ragman{}).
+		Model(&model.Partner{}).
 		Where("id = ?", id).
 		Updates(map[string]any{
 			"email_verified": true,
