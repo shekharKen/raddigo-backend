@@ -17,9 +17,11 @@ import (
 type PartnerRepository interface {
 	Create(ctx context.Context, partner *model.Partner) error
 	EmailExists(ctx context.Context, email string) (bool, error)
+	GetByID(ctx context.Context, id string) (model.Partner, error)
 	GetByEmail(ctx context.Context, email string) (model.Partner, error)
 	GetByVerifyToken(ctx context.Context, token string) (model.Partner, error)
 	MarkEmailVerified(ctx context.Context, id string) error
+	UpdateProfile(ctx context.Context, id string, fields map[string]any) error
 	SearchByLocation(ctx context.Context, lat, lng float64, limit, offset int) ([]model.Partner, int64, error)
 }
 
@@ -156,6 +158,40 @@ func (r *GormPartnerRepository) MarkEmailVerified(ctx context.Context, id string
 		})
 	if res.Error != nil {
 		return fmt.Errorf("mark verified: %w", res.Error)
+	}
+	if res.RowsAffected == 0 {
+		return utils.ErrNotFound
+	}
+	return nil
+}
+
+// GetByID returns the partner with the given id, preloading its store address
+// and operating-area polygon, or ErrNotFound.
+func (r *GormPartnerRepository) GetByID(ctx context.Context, id string) (model.Partner, error) {
+	var partner model.Partner
+	if err := r.db.WithContext(ctx).
+		Preload("ServiceArea").
+		Preload("StoreAddress").
+		First(&partner, "id = ?", id).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return model.Partner{}, utils.ErrNotFound
+		}
+		return model.Partner{}, fmt.Errorf("get partner by id: %w", err)
+	}
+	return partner, nil
+}
+
+// UpdateProfile updates the given profile fields for the partner.
+func (r *GormPartnerRepository) UpdateProfile(ctx context.Context, id string, fields map[string]any) error {
+	if len(fields) == 0 {
+		return nil
+	}
+	res := r.db.WithContext(ctx).
+		Model(&model.Partner{}).
+		Where("id = ?", id).
+		Updates(fields)
+	if res.Error != nil {
+		return fmt.Errorf("update partner profile: %w", res.Error)
 	}
 	if res.RowsAffected == 0 {
 		return utils.ErrNotFound

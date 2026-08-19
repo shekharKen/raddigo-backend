@@ -45,6 +45,11 @@ func run(logger *slog.Logger) error {
 		return err
 	}
 
+	// Ensure the upload directory exists so profile-image uploads can be stored.
+	if err := os.MkdirAll(cfg.UploadDir, 0o755); err != nil {
+		return err
+	}
+
 	c := di.New(cfg, logger, db)
 
 	router := server.NewRouter(
@@ -54,7 +59,9 @@ func run(logger *slog.Logger) error {
 		c.Handlers.Partner,
 		c.Handlers.Address,
 		c.Handlers.Rating,
+		c.Handlers.Profile,
 		middleware.Authenticate(c.Tokens),
+		cfg.PublicDir,
 	)
 	srv := server.New(cfg, logger, router)
 

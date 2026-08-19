@@ -11,6 +11,7 @@ type User struct {
 	MobileExtension string    `json:"mobile_extension" gorm:"not null"`
 	MobileNo        string    `json:"mobile_no" gorm:"not null"`
 	Password        string    `json:"-" gorm:"not null"`
+	ProfileImage    string    `json:"profile_image"`
 	EmailVerified   bool      `json:"email_verified" gorm:"not null;default:false"`
 	VerifyToken     string    `json:"-" gorm:"index"`
 	Addresses       []Address `json:"addresses" gorm:"constraint:OnDelete:CASCADE"`

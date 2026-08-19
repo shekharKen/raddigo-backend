@@ -14,6 +14,8 @@ type Config struct {
 	ShutdownTimeout time.Duration
 	DatabaseURL     string
 	AppBaseURL      string
+	PublicDir       string
+	UploadDir       string
 	JWTSecret       string
 	AccessTokenTTL  time.Duration
 	RefreshTokenTTL time.Duration
@@ -30,6 +32,8 @@ func Load() Config {
 		ShutdownTimeout: getDuration("SHUTDOWN_TIMEOUT", 10*time.Second),
 		DatabaseURL:     getEnv("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/raddigo?sslmode=disable"),
 		AppBaseURL:      getEnv("APP_BASE_URL", "http://localhost:8080"),
+		PublicDir:       getEnv("PUBLIC_DIR", "./public"),
+		UploadDir:       getEnv("UPLOAD_DIR", "./public/uploads"),
 		JWTSecret:       getEnv("JWT_SECRET", "dev-secret-change-me"),
 		AccessTokenTTL:  getDuration("ACCESS_TOKEN_TTL", 15*time.Minute),
 		RefreshTokenTTL: getDuration("REFRESH_TOKEN_TTL", 720*time.Hour),

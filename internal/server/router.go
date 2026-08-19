@@ -18,7 +18,9 @@ func NewRouter(
 	partner *handler.PartnerHandler,
 	address *handler.AddressHandler,
 	rating *handler.RatingHandler,
+	profile *handler.ProfileHandler,
 	authenticate gin.HandlerFunc,
+	publicDir string,
 ) http.Handler {
 	gin.SetMode(gin.DebugMode)
 
@@ -26,6 +28,9 @@ func NewRouter(
 	router.Use(middleware.Recoverer(logger), middleware.Logger(logger))
 
 	router.GET("/healthz", health.Health)
+
+	// Serve uploaded assets (e.g. profile images) from the public directory.
+	router.Static("/public", publicDir)
 
 	v1 := router.Group("/api/v1")
 	{
@@ -48,6 +53,10 @@ func NewRouter(
 		{
 			users.GET("/partner/search", partner.Search)
 
+			users.GET("/:userId/profile", middleware.RequireUser("userId"), profile.GetUserProfile)
+			users.PUT("/:userId/profile", middleware.RequireUser("userId"), profile.UpdateUserProfile)
+			users.POST("/:userId/profile/image", middleware.RequireUser("userId"), profile.UploadUserImage)
+
 			users.POST("/:userId/addresses", middleware.RequireUser("userId"), address.Create)
 			users.GET("/:userId/addresses", middleware.RequireUser("userId"), address.List)
 			users.GET("/:userId/addresses/:addressId", middleware.RequireUser("userId"), address.Get)
@@ -62,6 +71,10 @@ func NewRouter(
 		partners := v1.Group("/partner")
 		partners.Use(authenticate)
 		{
+			partners.GET("/:partnerId/profile", middleware.RequirePartner("partnerId"), profile.GetPartnerProfile)
+			partners.PUT("/:partnerId/profile", middleware.RequirePartner("partnerId"), profile.UpdatePartnerProfile)
+			partners.POST("/:partnerId/profile/image", middleware.RequirePartner("partnerId"), profile.UploadPartnerImage)
+
 			partners.POST("/:partnerId/user/:userId/rating", middleware.RequirePartner("partnerId"), rating.RateUser)
 			partners.GET("/:partnerId/ratings", rating.ListForPartner)
 			partners.GET("/:partnerId/rating-summary", rating.SummaryForPartner)

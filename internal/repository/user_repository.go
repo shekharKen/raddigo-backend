@@ -16,9 +16,11 @@ import (
 type UserRepository interface {
 	Create(ctx context.Context, user *model.User) error
 	EmailExists(ctx context.Context, email string) (bool, error)
+	GetByID(ctx context.Context, id string) (model.User, error)
 	GetByEmail(ctx context.Context, email string) (model.User, error)
 	GetByVerifyToken(ctx context.Context, token string) (model.User, error)
 	MarkEmailVerified(ctx context.Context, id string) error
+	UpdateProfile(ctx context.Context, id string, fields map[string]any) error
 }
 
 // GormUserRepository is a GORM-backed UserRepository.
@@ -49,6 +51,20 @@ func (r *GormUserRepository) EmailExists(ctx context.Context, email string) (boo
 		return false, fmt.Errorf("count users: %w", err)
 	}
 	return count > 0, nil
+}
+
+// GetByID returns the user with the given id (with addresses), or ErrNotFound.
+func (r *GormUserRepository) GetByID(ctx context.Context, id string) (model.User, error) {
+	var user model.User
+	if err := r.db.WithContext(ctx).
+		Preload("Addresses").
+		First(&user, "id = ?", id).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return model.User{}, utils.ErrNotFound
+		}
+		return model.User{}, fmt.Errorf("get user by id: %w", err)
+	}
+	return user, nil
 }
 
 // GetByEmail returns the user with the given email, or ErrNotFound.
@@ -90,6 +106,24 @@ func (r *GormUserRepository) MarkEmailVerified(ctx context.Context, id string) e
 		})
 	if res.Error != nil {
 		return fmt.Errorf("mark verified: %w", res.Error)
+	}
+	if res.RowsAffected == 0 {
+		return utils.ErrNotFound
+	}
+	return nil
+}
+
+// UpdateProfile updates the given profile fields for the user.
+func (r *GormUserRepository) UpdateProfile(ctx context.Context, id string, fields map[string]any) error {
+	if len(fields) == 0 {
+		return nil
+	}
+	res := r.db.WithContext(ctx).
+		Model(&model.User{}).
+		Where("id = ?", id).
+		Updates(fields)
+	if res.Error != nil {
+		return fmt.Errorf("update user profile: %w", res.Error)
 	}
 	if res.RowsAffected == 0 {
 		return utils.ErrNotFound

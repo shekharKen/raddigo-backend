@@ -37,9 +37,26 @@ type RefreshRequest struct {
 
 // AuthResponse is the issued token set returned by login, refresh and register.
 type AuthResponse struct {
-	AccessToken  string     `json:"access_token"`
-	RefreshToken string     `json:"refresh_token"`
-	TokenType    string     `json:"token_type"`
-	ExpiresIn    int64      `json:"expires_in"`
-	Info         any        `json:"info"`
+	AccessToken  string `json:"access_token"`
+	RefreshToken string `json:"refresh_token"`
+	TokenType    string `json:"token_type"`
+	ExpiresIn    int64  `json:"expires_in"`
+	Info         any    `json:"info"`
+}
+
+// UpdateUserProfileRequest is the payload accepted when a user edits their profile.
+type UpdateUserProfileRequest struct {
+	FirstName       string `json:"first_name"`
+	LastName        string `json:"last_name"`
+	MobileExtension string `json:"mobile_extension"`
+	MobileNo        string `json:"mobile_no"`
+}
+
+// UpdatePartnerProfileRequest is the payload accepted when a partner edits their profile.
+type UpdatePartnerProfileRequest struct {
+	FirstName       string `json:"first_name"`
+	LastName        string `json:"last_name"`
+	MobileExtension string `json:"mobile_extension"`
+	MobileNo        string `json:"mobile_no"`
+	StoreName       string `json:"store_name"`
 }

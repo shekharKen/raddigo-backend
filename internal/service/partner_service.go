@@ -150,6 +150,44 @@ func (s *PartnerService) VerifyEmail(ctx context.Context, token string) error {
 	return s.repo.MarkEmailVerified(ctx, partner.ID)
 }
 
+// GetProfile returns the partner with the given id.
+func (s *PartnerService) GetProfile(ctx context.Context, id string) (model.Partner, error) {
+	return s.repo.GetByID(ctx, id)
+}
+
+// UpdateProfile validates and persists the editable profile fields, returning
+// the updated partner.
+func (s *PartnerService) UpdateProfile(ctx context.Context, id string, in dto.UpdatePartnerProfileRequest) (model.Partner, error) {
+	if err := validation.ValidateUpdatePartnerProfile(in); err != nil {
+		return model.Partner{}, err
+	}
+
+	fields := map[string]any{
+		"first_name":       strings.TrimSpace(in.FirstName),
+		"last_name":        strings.TrimSpace(in.LastName),
+		"mobile_extension": strings.TrimSpace(in.MobileExtension),
+		"mobile_no":        strings.TrimSpace(in.MobileNo),
+		"store_name":       strings.TrimSpace(in.StoreName),
+		"updated_at":       s.now(),
+	}
+	if err := s.repo.UpdateProfile(ctx, id, fields); err != nil {
+		return model.Partner{}, err
+	}
+	return s.repo.GetByID(ctx, id)
+}
+
+// SetProfileImage persists the profile image URL for the partner.
+func (s *PartnerService) SetProfileImage(ctx context.Context, id, imageURL string) (model.Partner, error) {
+	fields := map[string]any{
+		"profile_image": imageURL,
+		"updated_at":    s.now(),
+	}
+	if err := s.repo.UpdateProfile(ctx, id, fields); err != nil {
+		return model.Partner{}, err
+	}
+	return s.repo.GetByID(ctx, id)
+}
+
 // SearchByLocation returns a paginated set of verified partners whose operating
 // area covers the given coordinates.
 func (s *PartnerService) SearchByLocation(ctx context.Context, lat, lng float64, page, pageSize int) (dto.PageResult[dto.PartnerSearchResult], error) {

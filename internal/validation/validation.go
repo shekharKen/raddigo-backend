@@ -90,6 +90,43 @@ func isValidPassword(password string) bool {
 	return hasLower && hasUpper && hasDigit && hasSpecial
 }
 
+// ValidateUpdateUserProfile validates the editable fields of a user profile.
+func ValidateUpdateUserProfile(in dto.UpdateUserProfileRequest) error {
+	if !isValidName(in.FirstName) {
+		return utils.NewValidationError("first name is invalid: use letters only, up to 50 characters")
+	}
+	if !isValidName(in.LastName) {
+		return utils.NewValidationError("last name is invalid: use letters only, up to 50 characters")
+	}
+	if !mobileExtensionRe.MatchString(strings.TrimSpace(in.MobileExtension)) {
+		return utils.NewValidationError("mobile extension is invalid: expected a '+' followed by 1-4 digits (e.g. +91)")
+	}
+	if !mobileNoRe.MatchString(strings.TrimSpace(in.MobileNo)) {
+		return utils.NewValidationError("mobile number is invalid: expected exactly 10 digits")
+	}
+	return nil
+}
+
+// ValidateUpdatePartnerProfile validates the editable fields of a partner profile.
+func ValidateUpdatePartnerProfile(in dto.UpdatePartnerProfileRequest) error {
+	if !isValidName(in.FirstName) {
+		return utils.NewValidationError("first name is invalid: use letters only, up to 50 characters")
+	}
+	if !isValidName(in.LastName) {
+		return utils.NewValidationError("last name is invalid: use letters only, up to 50 characters")
+	}
+	if !mobileExtensionRe.MatchString(strings.TrimSpace(in.MobileExtension)) {
+		return utils.NewValidationError("mobile extension is invalid: expected a '+' followed by 1-4 digits (e.g. +91)")
+	}
+	if !mobileNoRe.MatchString(strings.TrimSpace(in.MobileNo)) {
+		return utils.NewValidationError("mobile number is invalid: expected exactly 10 digits")
+	}
+	if strings.TrimSpace(in.StoreName) == "" {
+		return utils.NewValidationError("store name is required")
+	}
+	return nil
+}
+
 // ValidateAddress validates a standalone address payload used by the address
 // CRUD endpoints, returning a utils.ValidationError on the first failing field.
 func ValidateAddress(a dto.AddressRequest) error {

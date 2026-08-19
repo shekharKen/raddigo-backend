@@ -29,6 +29,10 @@ vendor/
 # Logs
 *.log
 
+# Uploaded assets (keep the folder, ignore uploads)
+/public/uploads/*
+!/public/uploads/.gitkeep
+
 # OS / editor
 .DS_Store
 Thumbs.db

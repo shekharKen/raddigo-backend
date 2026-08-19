@@ -37,6 +37,7 @@ type Handlers struct {
 	Partner *handler.PartnerHandler
 	Address *handler.AddressHandler
 	Rating  *handler.RatingHandler
+	Profile *handler.ProfileHandler
 }
 
 // Container holds the fully wired application dependencies.
@@ -54,7 +55,7 @@ func New(cfg config.Config, logger *slog.Logger, db *gorm.DB) *Container {
 	mail := mailer.NewLogMailer(logger)
 	tokens := auth.NewTokenService(cfg.JWTSecret, cfg.AccessTokenTTL, cfg.RefreshTokenTTL)
 	services := buildServices(cfg, repos, mail, tokens)
-	handlers := buildHandlers(services)
+	handlers := buildHandlers(cfg, services)
 
 	return &Container{
 		Repositories: repos,
@@ -83,12 +84,13 @@ func buildServices(cfg config.Config, repos Repositories, mail mailer.Mailer, to
 	}
 }
 
-func buildHandlers(services Services) Handlers {
+func buildHandlers(cfg config.Config, services Services) Handlers {
 	return Handlers{
 		Health:  handler.NewHealthHandler(),
 		Auth:    handler.NewAuthHandler(services.User, services.Auth),
 		Partner: handler.NewPartnerHandler(services.Partner, services.Auth),
 		Address: handler.NewAddressHandler(services.Address),
 		Rating:  handler.NewRatingHandler(services.Rating),
+		Profile: handler.NewProfileHandler(services.User, services.Partner, cfg.UploadDir, cfg.AppBaseURL),
 	}
 }

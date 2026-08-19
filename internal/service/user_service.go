@@ -125,6 +125,43 @@ func (s *UserService) Register(ctx context.Context, in dto.RegisterRequest) (mod
 	return user, nil
 }
 
+// GetProfile returns the user with the given id.
+func (s *UserService) GetProfile(ctx context.Context, id string) (model.User, error) {
+	return s.repo.GetByID(ctx, id)
+}
+
+// UpdateProfile validates and persists the editable profile fields, returning
+// the updated user.
+func (s *UserService) UpdateProfile(ctx context.Context, id string, in dto.UpdateUserProfileRequest) (model.User, error) {
+	if err := validation.ValidateUpdateUserProfile(in); err != nil {
+		return model.User{}, err
+	}
+
+	fields := map[string]any{
+		"first_name":       strings.TrimSpace(in.FirstName),
+		"last_name":        strings.TrimSpace(in.LastName),
+		"mobile_extension": strings.TrimSpace(in.MobileExtension),
+		"mobile_no":        strings.TrimSpace(in.MobileNo),
+		"updated_at":       s.now(),
+	}
+	if err := s.repo.UpdateProfile(ctx, id, fields); err != nil {
+		return model.User{}, err
+	}
+	return s.repo.GetByID(ctx, id)
+}
+
+// SetProfileImage persists the profile image URL for the user.
+func (s *UserService) SetProfileImage(ctx context.Context, id, imageURL string) (model.User, error) {
+	fields := map[string]any{
+		"profile_image": imageURL,
+		"updated_at":    s.now(),
+	}
+	if err := s.repo.UpdateProfile(ctx, id, fields); err != nil {
+		return model.User{}, err
+	}
+	return s.repo.GetByID(ctx, id)
+}
+
 // VerifyEmail marks the user owning the token as verified.
 func (s *UserService) VerifyEmail(ctx context.Context, token string) error {
 	token = strings.TrimSpace(token)
