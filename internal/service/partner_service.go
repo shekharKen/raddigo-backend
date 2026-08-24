@@ -113,6 +113,8 @@ func (s *PartnerService) Register(ctx context.Context, in dto.RegisterPartnerReq
 		Password:        string(hashed),
 		StoreName:       strings.TrimSpace(in.StoreName),
 		StoreAddress:    storeAddress,
+		StartTime:       strings.TrimSpace(in.StartTime),
+		EndTime:         strings.TrimSpace(in.EndTime),
 		EmailVerified:   false,
 		VerifyToken:     token,
 		ServiceArea:     points,
@@ -155,21 +157,43 @@ func (s *PartnerService) GetProfile(ctx context.Context, id string) (model.Partn
 	return s.repo.GetByID(ctx, id)
 }
 
-// UpdateProfile validates and persists the editable profile fields, returning
-// the updated partner.
+// UpdateProfile validates and persists the editable profile fields, updating
+// only fields that are provided and differ from the current values, and
+// returning the updated partner.
 func (s *PartnerService) UpdateProfile(ctx context.Context, id string, in dto.UpdatePartnerProfileRequest) (model.Partner, error) {
 	if err := validation.ValidateUpdatePartnerProfile(in); err != nil {
 		return model.Partner{}, err
 	}
 
-	fields := map[string]any{
-		"first_name":       strings.TrimSpace(in.FirstName),
-		"last_name":        strings.TrimSpace(in.LastName),
-		"mobile_extension": strings.TrimSpace(in.MobileExtension),
-		"mobile_no":        strings.TrimSpace(in.MobileNo),
-		"store_name":       strings.TrimSpace(in.StoreName),
-		"updated_at":       s.now(),
+	current, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return model.Partner{}, err
 	}
+
+	fields := map[string]any{}
+	setIfChanged(fields, "first_name", strings.TrimSpace(in.FirstName), current.FirstName)
+	setIfChanged(fields, "last_name", strings.TrimSpace(in.LastName), current.LastName)
+	setIfChanged(fields, "mobile_extension", strings.TrimSpace(in.MobileExtension), current.MobileExtension)
+	setIfChanged(fields, "mobile_no", strings.TrimSpace(in.MobileNo), current.MobileNo)
+	setIfChanged(fields, "store_name", strings.TrimSpace(in.StoreName), current.StoreName)
+
+	// Validate the working-hours range against the merged (new-or-current) values.
+	if strings.TrimSpace(in.StartTime) != "" || strings.TrimSpace(in.EndTime) != "" {
+		start := valueOr(strings.TrimSpace(in.StartTime), current.StartTime)
+		end := valueOr(strings.TrimSpace(in.EndTime), current.EndTime)
+		if start != "" && end != "" {
+			if err := validation.ValidateWorkingHours(start, end); err != nil {
+				return model.Partner{}, err
+			}
+		}
+		setIfChanged(fields, "start_time", strings.TrimSpace(in.StartTime), current.StartTime)
+		setIfChanged(fields, "end_time", strings.TrimSpace(in.EndTime), current.EndTime)
+	}
+
+	if len(fields) == 0 {
+		return current, nil
+	}
+	fields["updated_at"] = s.now()
 	if err := s.repo.UpdateProfile(ctx, id, fields); err != nil {
 		return model.Partner{}, err
 	}
@@ -225,6 +249,7 @@ func (s *PartnerService) SearchByLocation(ctx context.Context, lat, lng float64,
 			MobileExtension: r.MobileExtension,
 			MobileNo:        r.MobileNo,
 			StoreName:       r.StoreName,
+			AvailableSlots:  buildTimeSlots(r.StartTime, r.EndTime),
 		}
 		if stat, ok := stats[r.ID]; ok {
 			res.AverageRating = math.Round(stat.Average*100) / 100
@@ -260,4 +285,31 @@ func trimPtr(s *string) string {
 		return ""
 	}
 	return strings.TrimSpace(*s)
+}
+
+// setIfChanged adds key=val to fields when val is non-empty and differs from
+// the current value, so blank inputs leave existing data untouched.
+func setIfChanged(fields map[string]any, key, val, current string) {
+	if val != "" && val != current {
+		fields[key] = val
+	}
+}
+
+// valueOr returns val when it is non-empty, otherwise the fallback.
+func valueOr(val, fallback string) string {
+	if val != "" {
+		return val
+	}
+	return fallback
+}
+
+// buildTimeSlots returns the partner's working window as a single slot.
+// start and end are 24-hour "HH:MM" values; returns nil when either is empty.
+func buildTimeSlots(start, end string) []dto.TimeSlot {
+	start = strings.TrimSpace(start)
+	end = strings.TrimSpace(end)
+	if start == "" || end == "" {
+		return nil
+	}
+	return []dto.TimeSlot{{StartTime: start, EndTime: end}}
 }

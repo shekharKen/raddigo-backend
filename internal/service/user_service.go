@@ -130,20 +130,29 @@ func (s *UserService) GetProfile(ctx context.Context, id string) (model.User, er
 	return s.repo.GetByID(ctx, id)
 }
 
-// UpdateProfile validates and persists the editable profile fields, returning
-// the updated user.
+// UpdateProfile validates and persists the editable profile fields, updating
+// only fields that are provided and differ from the current values, and
+// returning the updated user.
 func (s *UserService) UpdateProfile(ctx context.Context, id string, in dto.UpdateUserProfileRequest) (model.User, error) {
 	if err := validation.ValidateUpdateUserProfile(in); err != nil {
 		return model.User{}, err
 	}
 
-	fields := map[string]any{
-		"first_name":       strings.TrimSpace(in.FirstName),
-		"last_name":        strings.TrimSpace(in.LastName),
-		"mobile_extension": strings.TrimSpace(in.MobileExtension),
-		"mobile_no":        strings.TrimSpace(in.MobileNo),
-		"updated_at":       s.now(),
+	current, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return model.User{}, err
 	}
+
+	fields := map[string]any{}
+	setIfChanged(fields, "first_name", strings.TrimSpace(in.FirstName), current.FirstName)
+	setIfChanged(fields, "last_name", strings.TrimSpace(in.LastName), current.LastName)
+	setIfChanged(fields, "mobile_extension", strings.TrimSpace(in.MobileExtension), current.MobileExtension)
+	setIfChanged(fields, "mobile_no", strings.TrimSpace(in.MobileNo), current.MobileNo)
+
+	if len(fields) == 0 {
+		return current, nil
+	}
+	fields["updated_at"] = s.now()
 	if err := s.repo.UpdateProfile(ctx, id, fields); err != nil {
 		return model.User{}, err
 	}

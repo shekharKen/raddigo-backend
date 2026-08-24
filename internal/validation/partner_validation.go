@@ -42,8 +42,29 @@ func ValidateRegisterPartner(in dto.RegisterPartnerRequest) error {
 	if err := ValidateAddress(in.StoreAddress); err != nil {
 		return err
 	}
+	if err := ValidateWorkingHours(in.StartTime, in.EndTime); err != nil {
+		return err
+	}
 	if err := validatePolygon(in.Polygon); err != nil {
 		return err
+	}
+	return nil
+}
+
+// ValidateWorkingHours checks that the store's opening and closing times are
+// valid 24-hour "HH:MM" values and that the closing time is after the opening
+// time.
+func ValidateWorkingHours(start, end string) error {
+	start = strings.TrimSpace(start)
+	end = strings.TrimSpace(end)
+	if !timeOfDayRe.MatchString(start) {
+		return utils.NewValidationError("working start time is invalid: expected 24-hour format HH:MM (e.g. 09:00)")
+	}
+	if !timeOfDayRe.MatchString(end) {
+		return utils.NewValidationError("working end time is invalid: expected 24-hour format HH:MM (e.g. 18:00)")
+	}
+	if end <= start {
+		return utils.NewValidationError("working end time must be after working start time")
 	}
 	return nil
 }

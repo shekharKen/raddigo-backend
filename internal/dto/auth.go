@@ -59,4 +59,6 @@ type UpdatePartnerProfileRequest struct {
 	MobileExtension string `json:"mobile_extension"`
 	MobileNo        string `json:"mobile_no"`
 	StoreName       string `json:"store_name"`
+	StartTime       string `json:"start_time"`
+	EndTime         string `json:"end_time"`
 }

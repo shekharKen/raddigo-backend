@@ -10,6 +10,8 @@ type RegisterPartnerRequest struct {
 	Password        string                `json:"password"`
 	StoreName       string                `json:"store_name"`
 	StoreAddress    AddressRequest        `json:"store_address"`
+	StartTime       string                `json:"start_time"`
+	EndTime         string                `json:"end_time"`
 	Polygon         []PolygonPointRequest `json:"polygon"`
 }
 
@@ -30,6 +32,13 @@ type PartnerSearchResult struct {
 	MobileNo        string           `json:"mobile_no"`
 	StoreName       string           `json:"store_name"`
 	StoreAddress    *AddressResponse `json:"store_address,omitempty"`
+	AvailableSlots  []TimeSlot       `json:"available_slots"`
 	AverageRating   float64          `json:"average_rating"`
 	TotalRatings    int64            `json:"total_ratings"`
+}
+
+// TimeSlot is a single bookable window within a partner's working hours.
+type TimeSlot struct {
+	StartTime string `json:"start_time"`
+	EndTime   string `json:"end_time"`
 }

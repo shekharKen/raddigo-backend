@@ -13,6 +13,8 @@ type Partner struct {
 	Password        string         `json:"-" gorm:"not null"`
 	StoreName       string         `json:"store_name" gorm:"not null"`
 	StoreAddress    *Address       `json:"store_address" gorm:"foreignKey:PartnerID;constraint:OnDelete:CASCADE"`
+	StartTime       string         `json:"start_time" gorm:"not null;default:''"`
+	EndTime         string         `json:"end_time" gorm:"not null;default:''"`
 	ProfileImage    string         `json:"profile_image"`
 	EmailVerified   bool           `json:"email_verified" gorm:"not null;default:false"`
 	VerifyToken     string         `json:"-" gorm:"index"`

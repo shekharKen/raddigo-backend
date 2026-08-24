@@ -23,6 +23,7 @@ var (
 	mobileExtensionRe = regexp.MustCompile(`^\+\d{1,4}$`)
 	mobileNoRe        = regexp.MustCompile(`^\d{10}$`)
 	nameRe            = regexp.MustCompile(`^[a-zA-Z][a-zA-Z\s'-]*$`)
+	timeOfDayRe       = regexp.MustCompile(`^([01]\d|2[0-3]):[0-5]\d$`)
 )
 
 // ValidateRegister validates a registration request, returning a
@@ -90,39 +91,48 @@ func isValidPassword(password string) bool {
 	return hasLower && hasUpper && hasDigit && hasSpecial
 }
 
-// ValidateUpdateUserProfile validates the editable fields of a user profile.
+// ValidateUpdateUserProfile validates the provided fields of a user profile.
+// All fields are optional; only non-empty fields are validated.
 func ValidateUpdateUserProfile(in dto.UpdateUserProfileRequest) error {
-	if !isValidName(in.FirstName) {
+	if s := strings.TrimSpace(in.FirstName); s != "" && !isValidName(s) {
 		return utils.NewValidationError("first name is invalid: use letters only, up to 50 characters")
 	}
-	if !isValidName(in.LastName) {
+	if s := strings.TrimSpace(in.LastName); s != "" && !isValidName(s) {
 		return utils.NewValidationError("last name is invalid: use letters only, up to 50 characters")
 	}
-	if !mobileExtensionRe.MatchString(strings.TrimSpace(in.MobileExtension)) {
+	if s := strings.TrimSpace(in.MobileExtension); s != "" && !mobileExtensionRe.MatchString(s) {
 		return utils.NewValidationError("mobile extension is invalid: expected a '+' followed by 1-4 digits (e.g. +91)")
 	}
-	if !mobileNoRe.MatchString(strings.TrimSpace(in.MobileNo)) {
+	if s := strings.TrimSpace(in.MobileNo); s != "" && !mobileNoRe.MatchString(s) {
 		return utils.NewValidationError("mobile number is invalid: expected exactly 10 digits")
 	}
 	return nil
 }
 
-// ValidateUpdatePartnerProfile validates the editable fields of a partner profile.
+// ValidateUpdatePartnerProfile validates the provided fields of a partner
+// profile. All fields are optional; only non-empty fields are validated. The
+// working-hours range check is done by the service against merged values.
 func ValidateUpdatePartnerProfile(in dto.UpdatePartnerProfileRequest) error {
-	if !isValidName(in.FirstName) {
+	if s := strings.TrimSpace(in.FirstName); s != "" && !isValidName(s) {
 		return utils.NewValidationError("first name is invalid: use letters only, up to 50 characters")
 	}
-	if !isValidName(in.LastName) {
+	if s := strings.TrimSpace(in.LastName); s != "" && !isValidName(s) {
 		return utils.NewValidationError("last name is invalid: use letters only, up to 50 characters")
 	}
-	if !mobileExtensionRe.MatchString(strings.TrimSpace(in.MobileExtension)) {
+	if s := strings.TrimSpace(in.MobileExtension); s != "" && !mobileExtensionRe.MatchString(s) {
 		return utils.NewValidationError("mobile extension is invalid: expected a '+' followed by 1-4 digits (e.g. +91)")
 	}
-	if !mobileNoRe.MatchString(strings.TrimSpace(in.MobileNo)) {
+	if s := strings.TrimSpace(in.MobileNo); s != "" && !mobileNoRe.MatchString(s) {
 		return utils.NewValidationError("mobile number is invalid: expected exactly 10 digits")
 	}
-	if strings.TrimSpace(in.StoreName) == "" {
-		return utils.NewValidationError("store name is required")
+	if s := strings.TrimSpace(in.StoreName); s != "" && len(s) > maxStoreLength {
+		return utils.NewValidationError(fmt.Sprintf("store name is invalid: up to %d characters", maxStoreLength))
+	}
+	if s := strings.TrimSpace(in.StartTime); s != "" && !timeOfDayRe.MatchString(s) {
+		return utils.NewValidationError("start time is invalid: expected 24-hour format HH:MM (e.g. 09:00)")
+	}
+	if s := strings.TrimSpace(in.EndTime); s != "" && !timeOfDayRe.MatchString(s) {
+		return utils.NewValidationError("end time is invalid: expected 24-hour format HH:MM (e.g. 18:00)")
 	}
 	return nil
 }
