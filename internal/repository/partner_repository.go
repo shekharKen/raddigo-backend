@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"gorm.io/gorm"
 
@@ -22,6 +23,9 @@ type PartnerRepository interface {
 	GetByVerifyToken(ctx context.Context, token string) (model.Partner, error)
 	MarkEmailVerified(ctx context.Context, id string) error
 	UpdateProfile(ctx context.Context, id string, fields map[string]any) error
+	SetResetToken(ctx context.Context, id, token string, expiry time.Time) error
+	GetByResetToken(ctx context.Context, token string) (model.Partner, error)
+	UpdatePassword(ctx context.Context, id, hashedPassword string) error
 	SearchByLocation(ctx context.Context, lat, lng float64, limit, offset int) ([]model.Partner, int64, error)
 }
 
@@ -192,6 +196,56 @@ func (r *GormPartnerRepository) UpdateProfile(ctx context.Context, id string, fi
 		Updates(fields)
 	if res.Error != nil {
 		return fmt.Errorf("update partner profile: %w", res.Error)
+	}
+	if res.RowsAffected == 0 {
+		return utils.ErrNotFound
+	}
+	return nil
+}
+
+// SetResetToken stores a password reset token and its expiry for the partner.
+func (r *GormPartnerRepository) SetResetToken(ctx context.Context, id, token string, expiry time.Time) error {
+	res := r.db.WithContext(ctx).
+		Model(&model.Partner{}).
+		Where("id = ?", id).
+		Updates(map[string]any{
+			"reset_token":        token,
+			"reset_token_expiry": expiry,
+		})
+	if res.Error != nil {
+		return fmt.Errorf("set reset token: %w", res.Error)
+	}
+	if res.RowsAffected == 0 {
+		return utils.ErrNotFound
+	}
+	return nil
+}
+
+// GetByResetToken returns the partner matching the reset token, or ErrNotFound.
+func (r *GormPartnerRepository) GetByResetToken(ctx context.Context, token string) (model.Partner, error) {
+	var partner model.Partner
+	if err := r.db.WithContext(ctx).
+		First(&partner, "reset_token = ?", token).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return model.Partner{}, utils.ErrNotFound
+		}
+		return model.Partner{}, fmt.Errorf("get partner by reset token: %w", err)
+	}
+	return partner, nil
+}
+
+// UpdatePassword sets a new password hash and clears the reset token.
+func (r *GormPartnerRepository) UpdatePassword(ctx context.Context, id, hashedPassword string) error {
+	res := r.db.WithContext(ctx).
+		Model(&model.Partner{}).
+		Where("id = ?", id).
+		Updates(map[string]any{
+			"password":           hashedPassword,
+			"reset_token":        "",
+			"reset_token_expiry": time.Time{},
+		})
+	if res.Error != nil {
+		return fmt.Errorf("update password: %w", res.Error)
 	}
 	if res.RowsAffected == 0 {
 		return utils.ErrNotFound

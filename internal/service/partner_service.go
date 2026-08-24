@@ -152,6 +152,63 @@ func (s *PartnerService) VerifyEmail(ctx context.Context, token string) error {
 	return s.repo.MarkEmailVerified(ctx, partner.ID)
 }
 
+// ForgotPassword issues a password reset token for the partner with the given
+// email and sends it by email. To avoid leaking which emails are registered, it
+// returns nil when no partner matches.
+func (s *PartnerService) ForgotPassword(ctx context.Context, in dto.ForgotPasswordRequest) error {
+	if err := validation.ValidateForgotPassword(in); err != nil {
+		return err
+	}
+
+	email := strings.ToLower(strings.TrimSpace(in.Email))
+	partner, err := s.repo.GetByEmail(ctx, email)
+	if err != nil {
+		if errors.Is(err, utils.ErrNotFound) {
+			return nil
+		}
+		return err
+	}
+
+	token, err := s.token()
+	if err != nil {
+		return fmt.Errorf("generate token: %w", err)
+	}
+	if err := s.repo.SetResetToken(ctx, partner.ID, token, s.now().Add(resetTokenTTL)); err != nil {
+		return err
+	}
+
+	resetURL := fmt.Sprintf("%s/api/v1/auth/partner/reset-password?token=%s", s.baseURL, url.QueryEscape(token))
+	if err := s.mailer.SendPasswordResetEmail(ctx, partner.Email, resetURL); err != nil {
+		return fmt.Errorf("send password reset email: %w", err)
+	}
+	return nil
+}
+
+// ResetPassword validates the reset token and, if valid and unexpired, sets the
+// partner's new password and clears the token.
+func (s *PartnerService) ResetPassword(ctx context.Context, in dto.ResetPasswordRequest) error {
+	if err := validation.ValidateResetPassword(in); err != nil {
+		return err
+	}
+
+	partner, err := s.repo.GetByResetToken(ctx, strings.TrimSpace(in.Token))
+	if err != nil {
+		if errors.Is(err, utils.ErrNotFound) {
+			return utils.ErrInvalidToken
+		}
+		return err
+	}
+	if partner.ResetTokenExpiry.IsZero() || s.now().After(partner.ResetTokenExpiry) {
+		return utils.ErrInvalidToken
+	}
+
+	hashed, err := bcrypt.GenerateFromPassword([]byte(in.Password), bcrypt.DefaultCost)
+	if err != nil {
+		return fmt.Errorf("hash password: %w", err)
+	}
+	return s.repo.UpdatePassword(ctx, partner.ID, string(hashed))
+}
+
 // GetProfile returns the partner with the given id.
 func (s *PartnerService) GetProfile(ctx context.Context, id string) (model.Partner, error) {
 	return s.repo.GetByID(ctx, id)

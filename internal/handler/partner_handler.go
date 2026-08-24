@@ -17,6 +17,8 @@ import (
 type partnerService interface {
 	Register(ctx context.Context, in dto.RegisterPartnerRequest) (model.Partner, error)
 	VerifyEmail(ctx context.Context, token string) error
+	ForgotPassword(ctx context.Context, in dto.ForgotPasswordRequest) error
+	ResetPassword(ctx context.Context, in dto.ResetPasswordRequest) error
 	SearchByLocation(ctx context.Context, lat, lng float64, page, pageSize int) (dto.PageResult[dto.PartnerSearchResult], error)
 }
 
@@ -81,6 +83,34 @@ func (h *PartnerHandler) Verify(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "email verified successfully"})
+}
+
+// ForgotPassword handles POST /api/v1/auth/partner/forgot-password.
+func (h *PartnerHandler) ForgotPassword(c *gin.Context) {
+	var in dto.ForgotPasswordRequest
+	if err := c.ShouldBindJSON(&in); err != nil {
+		c.JSON(http.StatusBadRequest, utils.ErrorResponse{Error: "invalid request body"})
+		return
+	}
+	if err := h.svc.ForgotPassword(c.Request.Context(), in); err != nil {
+		h.writeServiceError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "if the email is registered, a password reset link has been sent"})
+}
+
+// ResetPassword handles POST /api/v1/auth/partner/reset-password.
+func (h *PartnerHandler) ResetPassword(c *gin.Context) {
+	var in dto.ResetPasswordRequest
+	if err := c.ShouldBindJSON(&in); err != nil {
+		c.JSON(http.StatusBadRequest, utils.ErrorResponse{Error: "invalid request body"})
+		return
+	}
+	if err := h.svc.ResetPassword(c.Request.Context(), in); err != nil {
+		h.writeServiceError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "password has been reset successfully"})
 }
 
 // whose operating area covers the caller's current location.

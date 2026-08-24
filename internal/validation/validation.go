@@ -64,6 +64,25 @@ func isValidName(name string) bool {
 	return nameRe.MatchString(name)
 }
 
+// ValidateForgotPassword validates a forgot-password request.
+func ValidateForgotPassword(in dto.ForgotPasswordRequest) error {
+	if !isValidEmail(in.Email) {
+		return utils.NewValidationError("email is invalid")
+	}
+	return nil
+}
+
+// ValidateResetPassword validates a reset-password request.
+func ValidateResetPassword(in dto.ResetPasswordRequest) error {
+	if strings.TrimSpace(in.Token) == "" {
+		return utils.NewValidationError("reset token is required")
+	}
+	if !isValidPassword(in.Password) {
+		return utils.NewValidationError(fmt.Sprintf("password must be %d-%d characters with no spaces and include at least one lowercase letter, one uppercase letter, one number and one special character", minPasswordLength, maxPasswordLength))
+	}
+	return nil
+}
+
 func isValidEmail(email string) bool {
 	_, err := mail.ParseAddress(strings.TrimSpace(email))
 	return err == nil

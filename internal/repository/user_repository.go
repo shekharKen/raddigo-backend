@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"gorm.io/gorm"
 
@@ -21,6 +22,9 @@ type UserRepository interface {
 	GetByVerifyToken(ctx context.Context, token string) (model.User, error)
 	MarkEmailVerified(ctx context.Context, id string) error
 	UpdateProfile(ctx context.Context, id string, fields map[string]any) error
+	SetResetToken(ctx context.Context, id, token string, expiry time.Time) error
+	GetByResetToken(ctx context.Context, token string) (model.User, error)
+	UpdatePassword(ctx context.Context, id, hashedPassword string) error
 }
 
 // GormUserRepository is a GORM-backed UserRepository.
@@ -124,6 +128,56 @@ func (r *GormUserRepository) UpdateProfile(ctx context.Context, id string, field
 		Updates(fields)
 	if res.Error != nil {
 		return fmt.Errorf("update user profile: %w", res.Error)
+	}
+	if res.RowsAffected == 0 {
+		return utils.ErrNotFound
+	}
+	return nil
+}
+
+// SetResetToken stores a password reset token and its expiry for the user.
+func (r *GormUserRepository) SetResetToken(ctx context.Context, id, token string, expiry time.Time) error {
+	res := r.db.WithContext(ctx).
+		Model(&model.User{}).
+		Where("id = ?", id).
+		Updates(map[string]any{
+			"reset_token":        token,
+			"reset_token_expiry": expiry,
+		})
+	if res.Error != nil {
+		return fmt.Errorf("set reset token: %w", res.Error)
+	}
+	if res.RowsAffected == 0 {
+		return utils.ErrNotFound
+	}
+	return nil
+}
+
+// GetByResetToken returns the user matching the reset token, or ErrNotFound.
+func (r *GormUserRepository) GetByResetToken(ctx context.Context, token string) (model.User, error) {
+	var user model.User
+	if err := r.db.WithContext(ctx).
+		First(&user, "reset_token = ?", token).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return model.User{}, utils.ErrNotFound
+		}
+		return model.User{}, fmt.Errorf("get user by reset token: %w", err)
+	}
+	return user, nil
+}
+
+// UpdatePassword sets a new password hash and clears the reset token.
+func (r *GormUserRepository) UpdatePassword(ctx context.Context, id, hashedPassword string) error {
+	res := r.db.WithContext(ctx).
+		Model(&model.User{}).
+		Where("id = ?", id).
+		Updates(map[string]any{
+			"password":           hashedPassword,
+			"reset_token":        "",
+			"reset_token_expiry": time.Time{},
+		})
+	if res.Error != nil {
+		return fmt.Errorf("update password: %w", res.Error)
 	}
 	if res.RowsAffected == 0 {
 		return utils.ErrNotFound

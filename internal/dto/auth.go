@@ -35,6 +35,17 @@ type RefreshRequest struct {
 	RefreshToken string `json:"refresh_token"`
 }
 
+// ForgotPasswordRequest carries the email of the account requesting a reset.
+type ForgotPasswordRequest struct {
+	Email string `json:"email"`
+}
+
+// ResetPasswordRequest carries a reset token and the new password to set.
+type ResetPasswordRequest struct {
+	Token    string `json:"token"`
+	Password string `json:"password"`
+}
+
 // AuthResponse is the issued token set returned by login, refresh and register.
 type AuthResponse struct {
 	AccessToken  string `json:"access_token"`

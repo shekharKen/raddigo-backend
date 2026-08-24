@@ -22,6 +22,9 @@ import (
 	"github.com/raddigo/raddigo/internal/validation"
 )
 
+// resetTokenTTL is how long a password reset token remains valid.
+const resetTokenTTL = time.Hour
+
 // UserService contains user registration and verification logic.
 type UserService struct {
 	repo    repository.UserRepository
@@ -187,6 +190,63 @@ func (s *UserService) VerifyEmail(ctx context.Context, token string) error {
 	}
 
 	return s.repo.MarkEmailVerified(ctx, user.ID)
+}
+
+// ForgotPassword issues a password reset token for the account with the given
+// email and sends it by email. To avoid leaking which emails are registered, it
+// returns nil when no account matches.
+func (s *UserService) ForgotPassword(ctx context.Context, in dto.ForgotPasswordRequest) error {
+	if err := validation.ValidateForgotPassword(in); err != nil {
+		return err
+	}
+
+	email := strings.ToLower(strings.TrimSpace(in.Email))
+	user, err := s.repo.GetByEmail(ctx, email)
+	if err != nil {
+		if errors.Is(err, utils.ErrNotFound) {
+			return nil
+		}
+		return err
+	}
+
+	token, err := s.token()
+	if err != nil {
+		return fmt.Errorf("generate token: %w", err)
+	}
+	if err := s.repo.SetResetToken(ctx, user.ID, token, s.now().Add(resetTokenTTL)); err != nil {
+		return err
+	}
+
+	resetURL := fmt.Sprintf("%s/api/v1/auth/user/reset-password?token=%s", s.baseURL, url.QueryEscape(token))
+	if err := s.mailer.SendPasswordResetEmail(ctx, user.Email, resetURL); err != nil {
+		return fmt.Errorf("send password reset email: %w", err)
+	}
+	return nil
+}
+
+// ResetPassword validates the reset token and, if valid and unexpired, sets the
+// account's new password and clears the token.
+func (s *UserService) ResetPassword(ctx context.Context, in dto.ResetPasswordRequest) error {
+	if err := validation.ValidateResetPassword(in); err != nil {
+		return err
+	}
+
+	user, err := s.repo.GetByResetToken(ctx, strings.TrimSpace(in.Token))
+	if err != nil {
+		if errors.Is(err, utils.ErrNotFound) {
+			return utils.ErrInvalidToken
+		}
+		return err
+	}
+	if user.ResetTokenExpiry.IsZero() || s.now().After(user.ResetTokenExpiry) {
+		return utils.ErrInvalidToken
+	}
+
+	hashed, err := bcrypt.GenerateFromPassword([]byte(in.Password), bcrypt.DefaultCost)
+	if err != nil {
+		return fmt.Errorf("hash password: %w", err)
+	}
+	return s.repo.UpdatePassword(ctx, user.ID, string(hashed))
 }
 
 func randomToken() (string, error) {

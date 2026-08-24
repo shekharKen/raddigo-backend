@@ -16,6 +16,8 @@ import (
 type userService interface {
 	Register(ctx context.Context, in dto.RegisterRequest) (model.User, error)
 	VerifyEmail(ctx context.Context, token string) error
+	ForgotPassword(ctx context.Context, in dto.ForgotPasswordRequest) error
+	ResetPassword(ctx context.Context, in dto.ResetPasswordRequest) error
 }
 
 // authService abstracts credential login and token refresh logic.
@@ -103,6 +105,34 @@ func (h *AuthHandler) Verify(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "email verified successfully"})
+}
+
+// ForgotPassword handles POST /api/v1/auth/user/forgot-password.
+func (h *AuthHandler) ForgotPassword(c *gin.Context) {
+	var in dto.ForgotPasswordRequest
+	if err := c.ShouldBindJSON(&in); err != nil {
+		c.JSON(http.StatusBadRequest, utils.ErrorResponse{Error: "invalid request body"})
+		return
+	}
+	if err := h.svc.ForgotPassword(c.Request.Context(), in); err != nil {
+		h.writeServiceError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "if the email is registered, a password reset link has been sent"})
+}
+
+// ResetPassword handles POST /api/v1/auth/user/reset-password.
+func (h *AuthHandler) ResetPassword(c *gin.Context) {
+	var in dto.ResetPasswordRequest
+	if err := c.ShouldBindJSON(&in); err != nil {
+		c.JSON(http.StatusBadRequest, utils.ErrorResponse{Error: "invalid request body"})
+		return
+	}
+	if err := h.svc.ResetPassword(c.Request.Context(), in); err != nil {
+		h.writeServiceError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "password has been reset successfully"})
 }
 
 // writeServiceError maps domain errors to HTTP responses.
