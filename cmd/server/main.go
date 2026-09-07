@@ -2,11 +2,13 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
 
+	"github.com/joho/godotenv"
 	"github.com/raddigo/raddigo/internal/config"
 	"github.com/raddigo/raddigo/internal/database"
 	"github.com/raddigo/raddigo/internal/di"
@@ -25,6 +27,10 @@ func main() {
 }
 
 func run(logger *slog.Logger) error {
+	if err := godotenv.Load(); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+
 	cfg := config.Load()
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
