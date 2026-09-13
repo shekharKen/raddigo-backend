@@ -8,7 +8,6 @@ import (
 	"syscall"
 
 	"github.com/joho/godotenv"
-
 	"github.com/raddigo/raddigo/internal/config"
 	"github.com/raddigo/raddigo/internal/database"
 	"github.com/raddigo/raddigo/internal/di"
