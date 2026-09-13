@@ -22,25 +22,30 @@ import (
 
 // PartnerService contains partner registration and verification logic.
 type PartnerService struct {
-	repo    repository.PartnerRepository
-	ratings repository.RatingRepository
-	mailer  mailer.Mailer
-	baseURL string
-	now     func() time.Time
-	id      func() string
-	token   func() (string, error)
+	repo         repository.PartnerRepository
+	ratings      repository.RatingRepository
+	mailer       mailer.Mailer
+	baseURL      string
+	slotDuration time.Duration
+	now          func() time.Time
+	id           func() string
+	token        func() (string, error)
 }
 
 // NewPartnerService creates a PartnerService.
-func NewPartnerService(repo repository.PartnerRepository, ratings repository.RatingRepository, m mailer.Mailer, baseURL string) *PartnerService {
+func NewPartnerService(repo repository.PartnerRepository, ratings repository.RatingRepository, m mailer.Mailer, baseURL string, slotDuration time.Duration) *PartnerService {
+	if slotDuration <= 0 {
+		slotDuration = 30 * time.Minute
+	}
 	return &PartnerService{
-		repo:    repo,
-		ratings: ratings,
-		mailer:  m,
-		baseURL: strings.TrimRight(baseURL, "/"),
-		now:     time.Now,
-		id:      func() string { return uuid.NewString() },
-		token:   randomToken,
+		repo:         repo,
+		ratings:      ratings,
+		mailer:       m,
+		baseURL:      strings.TrimRight(baseURL, "/"),
+		slotDuration: slotDuration,
+		now:          time.Now,
+		id:           func() string { return uuid.NewString() },
+		token:        randomToken,
 	}
 }
 
@@ -306,7 +311,7 @@ func (s *PartnerService) SearchByLocation(ctx context.Context, lat, lng float64,
 			MobileExtension: r.MobileExtension,
 			MobileNo:        r.MobileNo,
 			StoreName:       r.StoreName,
-			AvailableSlots:  buildTimeSlots(r.StartTime, r.EndTime),
+			AvailableSlots:  buildTimeSlots(r.StartTime, r.EndTime, s.slotDuration),
 		}
 		if stat, ok := stats[r.ID]; ok {
 			res.AverageRating = math.Round(stat.Average*100) / 100
@@ -360,13 +365,42 @@ func valueOr(val, fallback string) string {
 	return fallback
 }
 
-// buildTimeSlots returns the partner's working window as a single slot.
-// start and end are 24-hour "HH:MM" values; returns nil when either is empty.
-func buildTimeSlots(start, end string) []dto.TimeSlot {
+// buildTimeSlots splits the partner's working window into consecutive slots of
+// the given duration. start and end are 24-hour "HH:MM" values; returns nil
+// when either is empty, unparseable, or the window is non-positive.
+func buildTimeSlots(start, end string, dur time.Duration) []dto.TimeSlot {
 	start = strings.TrimSpace(start)
 	end = strings.TrimSpace(end)
 	if start == "" || end == "" {
 		return nil
 	}
-	return []dto.TimeSlot{{StartTime: start, EndTime: end}}
+	if dur <= 0 {
+		dur = 30 * time.Minute
+	}
+
+	const layout = "15:04"
+	startT, err := time.Parse(layout, start)
+	if err != nil {
+		return nil
+	}
+	endT, err := time.Parse(layout, end)
+	if err != nil {
+		return nil
+	}
+	if !endT.After(startT) {
+		return nil
+	}
+
+	slots := make([]dto.TimeSlot, 0)
+	for cur := startT; cur.Before(endT); cur = cur.Add(dur) {
+		next := cur.Add(dur)
+		if next.After(endT) {
+			next = endT
+		}
+		slots = append(slots, dto.TimeSlot{
+			StartTime: cur.Format(layout),
+			EndTime:   next.Format(layout),
+		})
+	}
+	return slots
 }

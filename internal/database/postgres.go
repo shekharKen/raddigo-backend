@@ -54,6 +54,7 @@ func Migrate(db *gorm.DB) error {
 		&model.Address{},
 		&model.PolygonPoint{},
 		&model.Rating{},
+		&model.Booking{},
 	); err != nil {
 		return fmt.Errorf("auto migrate: %w", err)
 	}
@@ -90,6 +91,16 @@ func Migrate(db *gorm.DB) error {
 		if err := db.Exec(stmt).Error; err != nil {
 			return fmt.Errorf("spatial migrate: %w", err)
 		}
+	}
+
+	// Enforce that a partner can have at most one accepted booking per slot, so
+	// accepting a booking disables that slot for any competing request.
+	if err := db.Exec(
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_bookings_accepted_slot
+		 ON bookings (partner_id, slot_date, slot_start_time)
+		 WHERE status = 'accepted'`,
+	).Error; err != nil {
+		return fmt.Errorf("booking slot index: %w", err)
 	}
 	return nil
 }

@@ -11,6 +11,8 @@ var (
 	ErrInvalidCredentials = errors.New("invalid email or password")
 	ErrNotFound           = errors.New("resource not found")
 	ErrNotVerified        = errors.New("account not verified")
+	ErrSlotUnavailable    = errors.New("slot is no longer available")
+	ErrInvalidState       = errors.New("action not allowed in the current state")
 )
 
 // ValidationError carries a human-readable message for a failed validation

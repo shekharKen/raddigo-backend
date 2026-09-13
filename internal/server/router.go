@@ -18,6 +18,7 @@ func NewRouter(
 	partner *handler.PartnerHandler,
 	address *handler.AddressHandler,
 	rating *handler.RatingHandler,
+	booking *handler.BookingHandler,
 	profile *handler.ProfileHandler,
 	authenticate gin.HandlerFunc,
 	publicDir string,
@@ -70,6 +71,9 @@ func NewRouter(
 			users.POST("/:userId/partner/:partnerId/rating", middleware.RequireUser("userId"), rating.RatePartner)
 			users.GET("/:userId/ratings", middleware.RequireUser("userId"), rating.ListForUser)
 			users.GET("/:userId/rating-summary", middleware.RequireUser("userId"), rating.SummaryForUser)
+
+			users.POST("/bookings", middleware.RequireUserRole(), booking.Create)
+			users.GET("/bookings", middleware.RequireUserRole(), booking.ListForUser)
 		}
 
 		partners := v1.Group("/partner")
@@ -82,6 +86,10 @@ func NewRouter(
 			partners.POST("/:partnerId/user/:userId/rating", middleware.RequirePartner("partnerId"), rating.RateUser)
 			partners.GET("/:partnerId/ratings", rating.ListForPartner)
 			partners.GET("/:partnerId/rating-summary", rating.SummaryForPartner)
+
+			partners.GET("/bookings", middleware.RequirePartnerRole(), booking.ListForPartner)
+			partners.POST("/bookings/:bookingId/accept", middleware.RequirePartnerRole(), booking.Accept)
+			partners.POST("/bookings/:bookingId/reject", middleware.RequirePartnerRole(), booking.Reject)
 		}
 	}
 

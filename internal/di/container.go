@@ -19,6 +19,7 @@ type Repositories struct {
 	Partner repository.PartnerRepository
 	Address repository.AddressRepository
 	Rating  repository.RatingRepository
+	Booking repository.BookingRepository
 }
 
 // Services groups the business-logic layer.
@@ -27,6 +28,7 @@ type Services struct {
 	Partner *service.PartnerService
 	Address *service.AddressService
 	Rating  *service.RatingService
+	Booking *service.BookingService
 	Auth    *service.AuthService
 }
 
@@ -37,6 +39,7 @@ type Handlers struct {
 	Partner *handler.PartnerHandler
 	Address *handler.AddressHandler
 	Rating  *handler.RatingHandler
+	Booking *handler.BookingHandler
 	Profile *handler.ProfileHandler
 }
 
@@ -71,15 +74,17 @@ func buildRepositories(db *gorm.DB) Repositories {
 		Partner: repository.NewGormPartnerRepository(db),
 		Address: repository.NewGormAddressRepository(db),
 		Rating:  repository.NewGormRatingRepository(db),
+		Booking: repository.NewGormBookingRepository(db),
 	}
 }
 
 func buildServices(cfg config.Config, repos Repositories, mail mailer.Mailer, tokens *auth.TokenService) Services {
 	return Services{
 		User:    service.NewUserService(repos.User, mail, cfg.AppBaseURL),
-		Partner: service.NewPartnerService(repos.Partner, repos.Rating, mail, cfg.AppBaseURL),
+		Partner: service.NewPartnerService(repos.Partner, repos.Rating, mail, cfg.AppBaseURL, cfg.SlotDuration),
 		Address: service.NewAddressService(repos.Address),
 		Rating:  service.NewRatingService(repos.Rating),
+		Booking: service.NewBookingService(repos.Booking, repos.Partner, cfg.SlotDuration),
 		Auth:    service.NewAuthService(repos.User, repos.Partner, tokens),
 	}
 }
@@ -91,6 +96,7 @@ func buildHandlers(cfg config.Config, services Services) Handlers {
 		Partner: handler.NewPartnerHandler(services.Partner, services.Auth),
 		Address: handler.NewAddressHandler(services.Address),
 		Rating:  handler.NewRatingHandler(services.Rating),
+		Booking: handler.NewBookingHandler(services.Booking, cfg.UploadDir, cfg.AppBaseURL),
 		Profile: handler.NewProfileHandler(services.User, services.Partner, cfg.UploadDir, cfg.AppBaseURL),
 	}
 }

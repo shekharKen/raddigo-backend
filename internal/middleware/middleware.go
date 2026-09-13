@@ -84,6 +84,28 @@ func RequirePartner(param string) gin.HandlerFunc {
 	return requireSelf(string(auth.RolePartner), param)
 }
 
+// RequireUserRole ensures the caller is an authenticated user, without binding
+// to a path parameter. The user id is taken from the token via ContextSubjectKey.
+func RequireUserRole() gin.HandlerFunc {
+	return requireRole(string(auth.RoleUser))
+}
+
+// RequirePartnerRole ensures the caller is an authenticated partner, without
+// binding to a path parameter. The partner id is taken from the token.
+func RequirePartnerRole() gin.HandlerFunc {
+	return requireRole(string(auth.RolePartner))
+}
+
+func requireRole(role string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if c.GetString(ContextRoleKey) != role {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+			return
+		}
+		c.Next()
+	}
+}
+
 func requireSelf(role, param string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if c.GetString(ContextRoleKey) != role || c.GetString(ContextSubjectKey) != c.Param(param) {

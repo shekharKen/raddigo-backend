@@ -19,6 +19,7 @@ type Config struct {
 	JWTSecret       string
 	AccessTokenTTL  time.Duration
 	RefreshTokenTTL time.Duration
+	SlotDuration    time.Duration
 }
 
 // Load builds a Config from environment variables, falling back to sensible
@@ -37,6 +38,7 @@ func Load() Config {
 		JWTSecret:       getEnv("JWT_SECRET", "dev-secret-change-me"),
 		AccessTokenTTL:  getDuration("ACCESS_TOKEN_TTL", 15*time.Minute),
 		RefreshTokenTTL: getDuration("REFRESH_TOKEN_TTL", 720*time.Hour),
+		SlotDuration:    getDuration("SLOT_DURATION", 30*time.Minute),
 	}
 }
 

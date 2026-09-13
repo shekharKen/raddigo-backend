@@ -7,6 +7,8 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/joho/godotenv"
+
 	"github.com/raddigo/raddigo/internal/config"
 	"github.com/raddigo/raddigo/internal/database"
 	"github.com/raddigo/raddigo/internal/di"
@@ -25,6 +27,11 @@ func main() {
 }
 
 func run(logger *slog.Logger) error {
+	// Load .env if present; real environment variables still take precedence.
+	if err := godotenv.Load(); err != nil && !os.IsNotExist(err) {
+		logger.Warn("could not load .env file", "error", err)
+	}
+
 	cfg := config.Load()
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -59,6 +66,7 @@ func run(logger *slog.Logger) error {
 		c.Handlers.Partner,
 		c.Handlers.Address,
 		c.Handlers.Rating,
+		c.Handlers.Booking,
 		c.Handlers.Profile,
 		middleware.Authenticate(c.Tokens),
 		cfg.PublicDir,
