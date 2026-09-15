@@ -14,7 +14,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 COPY . .
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
-    CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /raddigo ./cmd/server
+    GOMAXPROCS=1 CGO_ENABLED=0 GOOS=linux go build -p 1 -ldflags="-s -w" -o /raddigo ./cmd/server
 
 # ---- Runtime stage ----
 FROM alpine:3.20
