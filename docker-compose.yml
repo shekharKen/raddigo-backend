@@ -1,7 +1,6 @@
 services:
   db:
     image: postgis/postgis:16-3.4
-    platform: linux/arm64
     container_name: raddigo-db
     environment:
       POSTGRES_USER: postgres
