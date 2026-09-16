@@ -63,19 +63,21 @@ type AuthResponse struct {
 
 // UpdateUserProfileRequest is the payload accepted when a user edits their profile.
 type UpdateUserProfileRequest struct {
-	FirstName       string `json:"first_name"`
-	LastName        string `json:"last_name"`
-	MobileExtension string `json:"mobile_extension"`
-	MobileNo        string `json:"mobile_no"`
+	FirstName       string          `json:"first_name"`
+	LastName        string          `json:"last_name"`
+	MobileExtension string          `json:"mobile_extension"`
+	MobileNo        string          `json:"mobile_no"`
+	Address         *AddressRequest `json:"address"`
 }
 
 // UpdatePartnerProfileRequest is the payload accepted when a partner edits their profile.
 type UpdatePartnerProfileRequest struct {
-	FirstName       string `json:"first_name"`
-	LastName        string `json:"last_name"`
-	MobileExtension string `json:"mobile_extension"`
-	MobileNo        string `json:"mobile_no"`
-	StoreName       string `json:"store_name"`
-	StartTime       string `json:"start_time"`
-	EndTime         string `json:"end_time"`
+	FirstName       string          `json:"first_name"`
+	LastName        string          `json:"last_name"`
+	MobileExtension string          `json:"mobile_extension"`
+	MobileNo        string          `json:"mobile_no"`
+	StoreName       string          `json:"store_name"`
+	StartTime       string          `json:"start_time"`
+	EndTime         string          `json:"end_time"`
+	StoreAddress    *AddressRequest `json:"store_address"`
 }

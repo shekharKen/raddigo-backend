@@ -108,3 +108,20 @@ func (r *GormAddressRepository) Delete(ctx context.Context, userID, id string) e
 	}
 	return nil
 }
+
+// addressUpdateFields returns the editable columns of an address as a map so
+// nullable coordinates are written even when cleared to NULL.
+func addressUpdateFields(a *model.Address) map[string]any {
+	return map[string]any{
+		"address1":   a.Address1,
+		"address2":   a.Address2,
+		"street":     a.Street,
+		"city":       a.City,
+		"state":      a.State,
+		"country":    a.Country,
+		"pincode":    a.Pincode,
+		"latitude":   a.Latitude,
+		"longitude":  a.Longitude,
+		"updated_at": a.UpdatedAt,
+	}
+}

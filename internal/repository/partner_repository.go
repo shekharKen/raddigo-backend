@@ -22,6 +22,7 @@ type PartnerRepository interface {
 	GetByEmail(ctx context.Context, email string) (model.Partner, error)
 	MarkEmailVerified(ctx context.Context, id string) error
 	UpdateProfile(ctx context.Context, id string, fields map[string]any) error
+	UpsertStoreAddress(ctx context.Context, partnerID string, address *model.Address) error
 	SetResetOTP(ctx context.Context, id, otp string, expiry time.Time) error
 	SetResetToken(ctx context.Context, id, token string, expiry time.Time) error
 	GetByResetToken(ctx context.Context, token string) (model.Partner, error)
@@ -186,6 +187,31 @@ func (r *GormPartnerRepository) UpdateProfile(ctx context.Context, id string, fi
 		return utils.ErrNotFound
 	}
 	return nil
+}
+
+// UpsertStoreAddress updates the partner's store address, or creates one when
+// the partner has none yet.
+func (r *GormPartnerRepository) UpsertStoreAddress(ctx context.Context, partnerID string, address *model.Address) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var existing model.Address
+		err := tx.Where("partner_id = ? AND type = ?", partnerID, model.AddressTypePartnerStore).
+			First(&existing).Error
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				if err := tx.Create(address).Error; err != nil {
+					return fmt.Errorf("create store address: %w", err)
+				}
+				return nil
+			}
+			return fmt.Errorf("get store address: %w", err)
+		}
+		if err := tx.Model(&model.Address{}).
+			Where("id = ?", existing.ID).
+			Updates(addressUpdateFields(address)).Error; err != nil {
+			return fmt.Errorf("update store address: %w", err)
+		}
+		return nil
+	})
 }
 
 // SetResetOTP stores a password-reset OTP and its expiry for the partner.

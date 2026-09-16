@@ -146,6 +146,11 @@ func (s *UserService) UpdateProfile(ctx context.Context, id string, in dto.Updat
 	if err := validation.ValidateUpdateUserProfile(in); err != nil {
 		return model.User{}, err
 	}
+	if in.Address != nil {
+		if err := validation.ValidateAddress(*in.Address); err != nil {
+			return model.User{}, err
+		}
+	}
 
 	current, err := s.repo.GetByID(ctx, id)
 	if err != nil {
@@ -158,14 +163,46 @@ func (s *UserService) UpdateProfile(ctx context.Context, id string, in dto.Updat
 	setIfChanged(fields, "mobile_extension", strings.TrimSpace(in.MobileExtension), current.MobileExtension)
 	setIfChanged(fields, "mobile_no", strings.TrimSpace(in.MobileNo), current.MobileNo)
 
-	if len(fields) == 0 {
+	if len(fields) == 0 && in.Address == nil {
 		return current, nil
 	}
-	fields["updated_at"] = s.now()
-	if err := s.repo.UpdateProfile(ctx, id, fields); err != nil {
-		return model.User{}, err
+
+	if len(fields) > 0 {
+		fields["updated_at"] = s.now()
+		if err := s.repo.UpdateProfile(ctx, id, fields); err != nil {
+			return model.User{}, err
+		}
 	}
+
+	if in.Address != nil {
+		address := s.buildAddress(id, *in.Address)
+		if err := s.repo.UpsertPrimaryAddress(ctx, id, &address); err != nil {
+			return model.User{}, err
+		}
+	}
+
 	return s.repo.GetByID(ctx, id)
+}
+
+// buildAddress builds a user-owned address model from the request input.
+func (s *UserService) buildAddress(userID string, in dto.AddressRequest) model.Address {
+	now := s.now()
+	return model.Address{
+		ID:        s.id(),
+		Type:      model.AddressTypeUser,
+		UserID:    &userID,
+		Address1:  strings.TrimSpace(in.Address1),
+		Address2:  trimPtr(in.Address2),
+		Street:    strings.TrimSpace(in.Street),
+		City:      strings.TrimSpace(in.City),
+		State:     strings.TrimSpace(in.State),
+		Country:   strings.TrimSpace(in.Country),
+		Pincode:   strings.TrimSpace(in.Pincode),
+		Latitude:  in.Latitude,
+		Longitude: in.Longitude,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
 }
 
 // SetProfileImage persists the profile image URL for the user.

@@ -21,6 +21,7 @@ type UserRepository interface {
 	GetByEmail(ctx context.Context, email string) (model.User, error)
 	MarkEmailVerified(ctx context.Context, id string) error
 	UpdateProfile(ctx context.Context, id string, fields map[string]any) error
+	UpsertPrimaryAddress(ctx context.Context, userID string, address *model.Address) error
 	SetResetOTP(ctx context.Context, id, otp string, expiry time.Time) error
 	SetResetToken(ctx context.Context, id, token string, expiry time.Time) error
 	GetByResetToken(ctx context.Context, token string) (model.User, error)
@@ -119,6 +120,30 @@ func (r *GormUserRepository) UpdateProfile(ctx context.Context, id string, field
 		return utils.ErrNotFound
 	}
 	return nil
+}
+
+// UpsertPrimaryAddress updates the user's existing (oldest) address, or creates
+// one when the user has none yet.
+func (r *GormUserRepository) UpsertPrimaryAddress(ctx context.Context, userID string, address *model.Address) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var existing model.Address
+		err := tx.Where("user_id = ?", userID).Order("created_at ASC").First(&existing).Error
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				if err := tx.Create(address).Error; err != nil {
+					return fmt.Errorf("create user address: %w", err)
+				}
+				return nil
+			}
+			return fmt.Errorf("get user address: %w", err)
+		}
+		if err := tx.Model(&model.Address{}).
+			Where("id = ?", existing.ID).
+			Updates(addressUpdateFields(address)).Error; err != nil {
+			return fmt.Errorf("update user address: %w", err)
+		}
+		return nil
+	})
 }
 
 // SetResetOTP stores a password-reset OTP and its expiry for the user.

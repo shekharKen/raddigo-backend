@@ -268,6 +268,11 @@ func (s *PartnerService) UpdateProfile(ctx context.Context, id string, in dto.Up
 	if err := validation.ValidateUpdatePartnerProfile(in); err != nil {
 		return model.Partner{}, err
 	}
+	if in.StoreAddress != nil {
+		if err := validation.ValidateAddress(*in.StoreAddress); err != nil {
+			return model.Partner{}, err
+		}
+	}
 
 	current, err := s.repo.GetByID(ctx, id)
 	if err != nil {
@@ -294,14 +299,46 @@ func (s *PartnerService) UpdateProfile(ctx context.Context, id string, in dto.Up
 		setIfChanged(fields, "end_time", strings.TrimSpace(in.EndTime), current.EndTime)
 	}
 
-	if len(fields) == 0 {
+	if len(fields) == 0 && in.StoreAddress == nil {
 		return current, nil
 	}
-	fields["updated_at"] = s.now()
-	if err := s.repo.UpdateProfile(ctx, id, fields); err != nil {
-		return model.Partner{}, err
+
+	if len(fields) > 0 {
+		fields["updated_at"] = s.now()
+		if err := s.repo.UpdateProfile(ctx, id, fields); err != nil {
+			return model.Partner{}, err
+		}
 	}
+
+	if in.StoreAddress != nil {
+		address := s.buildStoreAddress(id, *in.StoreAddress)
+		if err := s.repo.UpsertStoreAddress(ctx, id, &address); err != nil {
+			return model.Partner{}, err
+		}
+	}
+
 	return s.repo.GetByID(ctx, id)
+}
+
+// buildStoreAddress builds a partner store address model from the request input.
+func (s *PartnerService) buildStoreAddress(partnerID string, in dto.AddressRequest) model.Address {
+	now := s.now()
+	return model.Address{
+		ID:        s.id(),
+		Type:      model.AddressTypePartnerStore,
+		PartnerID: &partnerID,
+		Address1:  strings.TrimSpace(in.Address1),
+		Address2:  trimPtr(in.Address2),
+		Street:    strings.TrimSpace(in.Street),
+		City:      strings.TrimSpace(in.City),
+		State:     strings.TrimSpace(in.State),
+		Country:   strings.TrimSpace(in.Country),
+		Pincode:   strings.TrimSpace(in.Pincode),
+		Latitude:  in.Latitude,
+		Longitude: in.Longitude,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
 }
 
 // SetProfileImage persists the profile image URL for the partner.
