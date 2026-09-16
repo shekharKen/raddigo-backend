@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"net/url"
 	"strings"
 	"time"
 
@@ -33,26 +32,24 @@ const otpLength = 6
 
 // UserService contains user registration and verification logic.
 type UserService struct {
-	repo    repository.UserRepository
-	mailer  mailer.Mailer
-	baseURL string
-	now     func() time.Time
-	id      func() string
-	token   func() (string, error)
-	otp     func() (string, error)
+	repo   repository.UserRepository
+	mailer mailer.Mailer
+	now    func() time.Time
+	id     func() string
+	token  func() (string, error)
+	otp    func() (string, error)
 }
 
 // NewUserService creates a UserService. devOTP, when non-empty, is used as a
 // fixed verification OTP instead of a random one (development only).
-func NewUserService(repo repository.UserRepository, m mailer.Mailer, baseURL, devOTP string) *UserService {
+func NewUserService(repo repository.UserRepository, m mailer.Mailer, devOTP string) *UserService {
 	return &UserService{
-		repo:    repo,
-		mailer:  m,
-		baseURL: strings.TrimRight(baseURL, "/"),
-		now:     time.Now,
-		id:      func() string { return uuid.NewString() },
-		token:   randomToken,
-		otp:     newOTPFunc(devOTP),
+		repo:   repo,
+		mailer: m,
+		now:    time.Now,
+		id:     func() string { return uuid.NewString() },
+		token:  randomToken,
+		otp:    newOTPFunc(devOTP),
 	}
 }
 
@@ -211,7 +208,7 @@ func (s *UserService) VerifyEmail(ctx context.Context, in dto.VerifyOTPRequest) 
 	return s.repo.MarkEmailVerified(ctx, user.ID)
 }
 
-// ForgotPassword issues a password reset token for the account with the given
+// ForgotPassword issues a password reset OTP for the account with the given
 // email and sends it by email. To avoid leaking which emails are registered, it
 // returns nil when no account matches.
 func (s *UserService) ForgotPassword(ctx context.Context, in dto.ForgotPasswordRequest) error {
@@ -228,19 +225,51 @@ func (s *UserService) ForgotPassword(ctx context.Context, in dto.ForgotPasswordR
 		return err
 	}
 
-	token, err := s.token()
+	otp, err := s.otp()
 	if err != nil {
-		return fmt.Errorf("generate token: %w", err)
+		return fmt.Errorf("generate otp: %w", err)
 	}
-	if err := s.repo.SetResetToken(ctx, user.ID, token, s.now().Add(resetTokenTTL)); err != nil {
+	if err := s.repo.SetResetOTP(ctx, user.ID, otp, s.now().Add(otpTTL)); err != nil {
 		return err
 	}
 
-	resetURL := fmt.Sprintf("%s/api/v1/auth/user/reset-password?token=%s", s.baseURL, url.QueryEscape(token))
-	if err := s.mailer.SendPasswordResetEmail(ctx, user.Email, resetURL); err != nil {
+	if err := s.mailer.SendPasswordResetEmail(ctx, user.Email, otp); err != nil {
 		return fmt.Errorf("send password reset email: %w", err)
 	}
 	return nil
+}
+
+// VerifyForgotPasswordOTP confirms the password-reset OTP sent to the user's
+// email and, on success, issues a short-lived reset token to be used with
+// ResetPassword to actually set the new password.
+func (s *UserService) VerifyForgotPasswordOTP(ctx context.Context, in dto.VerifyOTPRequest) (string, error) {
+	if err := validation.ValidateVerifyOTP(in); err != nil {
+		return "", err
+	}
+
+	email := strings.ToLower(strings.TrimSpace(in.Email))
+	user, err := s.repo.GetByEmail(ctx, email)
+	if err != nil {
+		if errors.Is(err, utils.ErrNotFound) {
+			return "", utils.ErrInvalidOTP
+		}
+		return "", err
+	}
+	if user.ResetOTP == "" || user.ResetOTP != strings.TrimSpace(in.OTP) {
+		return "", utils.ErrInvalidOTP
+	}
+	if user.ResetOTPExpiry.IsZero() || s.now().After(user.ResetOTPExpiry) {
+		return "", utils.ErrInvalidOTP
+	}
+
+	token, err := s.token()
+	if err != nil {
+		return "", fmt.Errorf("generate token: %w", err)
+	}
+	if err := s.repo.SetResetToken(ctx, user.ID, token, s.now().Add(resetTokenTTL)); err != nil {
+		return "", err
+	}
+	return token, nil
 }
 
 // ResetPassword validates the reset token and, if valid and unexpired, sets the

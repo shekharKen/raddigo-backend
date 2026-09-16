@@ -19,6 +19,8 @@ type Partner struct {
 	EmailVerified    bool           `json:"email_verified" gorm:"not null;default:false"`
 	VerifyOTP        string         `json:"-" gorm:"index"`
 	VerifyOTPExpiry  time.Time      `json:"-"`
+	ResetOTP         string         `json:"-" gorm:"index"`
+	ResetOTPExpiry   time.Time      `json:"-"`
 	ResetToken       string         `json:"-" gorm:"index"`
 	ResetTokenExpiry time.Time      `json:"-"`
 	ServiceArea      []PolygonPoint `json:"service_area" gorm:"constraint:OnDelete:CASCADE"`

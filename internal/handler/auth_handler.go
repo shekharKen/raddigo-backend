@@ -17,6 +17,7 @@ type userService interface {
 	Register(ctx context.Context, in dto.RegisterRequest) (model.User, error)
 	VerifyEmail(ctx context.Context, in dto.VerifyOTPRequest) error
 	ForgotPassword(ctx context.Context, in dto.ForgotPasswordRequest) error
+	VerifyForgotPasswordOTP(ctx context.Context, in dto.VerifyOTPRequest) (string, error)
 	ResetPassword(ctx context.Context, in dto.ResetPasswordRequest) error
 }
 
@@ -122,7 +123,22 @@ func (h *AuthHandler) ForgotPassword(c *gin.Context) {
 		h.writeServiceError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"message": "if the email is registered, a password reset link has been sent"})
+	c.JSON(http.StatusOK, gin.H{"message": "if the email is registered, a password reset otp has been sent"})
+}
+
+// VerifyForgotPasswordOTP handles POST /api/v1/auth/user/forgot-password/verify.
+func (h *AuthHandler) VerifyForgotPasswordOTP(c *gin.Context) {
+	var in dto.VerifyOTPRequest
+	if err := c.ShouldBindJSON(&in); err != nil {
+		c.JSON(http.StatusBadRequest, utils.ErrorResponse{Error: "invalid request body"})
+		return
+	}
+	token, err := h.svc.VerifyForgotPasswordOTP(c.Request.Context(), in)
+	if err != nil {
+		h.writeServiceError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"reset_token": token})
 }
 
 // ResetPassword handles POST /api/v1/auth/user/reset-password.

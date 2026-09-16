@@ -80,8 +80,8 @@ func buildRepositories(db *gorm.DB) Repositories {
 
 func buildServices(cfg config.Config, repos Repositories, mail mailer.Mailer, tokens *auth.TokenService) Services {
 	return Services{
-		User:    service.NewUserService(repos.User, mail, cfg.AppBaseURL, cfg.DevOTP),
-		Partner: service.NewPartnerService(repos.Partner, repos.Rating, mail, cfg.AppBaseURL, cfg.SlotDuration, cfg.DevOTP),
+		User:    service.NewUserService(repos.User, mail, cfg.DevOTP),
+		Partner: service.NewPartnerService(repos.Partner, repos.Rating, mail, cfg.SlotDuration, cfg.DevOTP),
 		Address: service.NewAddressService(repos.Address),
 		Rating:  service.NewRatingService(repos.Rating),
 		Booking: service.NewBookingService(repos.Booking, repos.Partner, cfg.SlotDuration),

@@ -41,12 +41,14 @@ func NewRouter(
 			authGroup.POST("/user/verify", auth.Verify)
 			authGroup.POST("/user/login", auth.Login)
 			authGroup.POST("/user/forgot-password", auth.ForgotPassword)
+			authGroup.POST("/user/forgot-password/verify", auth.VerifyForgotPasswordOTP)
 			authGroup.POST("/user/reset-password", auth.ResetPassword)
 
 			authGroup.POST("/partner/register", partner.Register)
 			authGroup.POST("/partner/verify", partner.Verify)
 			authGroup.POST("/partner/login", partner.Login)
 			authGroup.POST("/partner/forgot-password", partner.ForgotPassword)
+			authGroup.POST("/partner/forgot-password/verify", partner.VerifyForgotPasswordOTP)
 			authGroup.POST("/partner/reset-password", partner.ResetPassword)
 
 			// Serves users and partners: the role is read from the refresh token.

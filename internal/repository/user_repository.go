@@ -21,6 +21,7 @@ type UserRepository interface {
 	GetByEmail(ctx context.Context, email string) (model.User, error)
 	MarkEmailVerified(ctx context.Context, id string) error
 	UpdateProfile(ctx context.Context, id string, fields map[string]any) error
+	SetResetOTP(ctx context.Context, id, otp string, expiry time.Time) error
 	SetResetToken(ctx context.Context, id, token string, expiry time.Time) error
 	GetByResetToken(ctx context.Context, token string) (model.User, error)
 	UpdatePassword(ctx context.Context, id, hashedPassword string) error
@@ -120,7 +121,26 @@ func (r *GormUserRepository) UpdateProfile(ctx context.Context, id string, field
 	return nil
 }
 
-// SetResetToken stores a password reset token and its expiry for the user.
+// SetResetOTP stores a password-reset OTP and its expiry for the user.
+func (r *GormUserRepository) SetResetOTP(ctx context.Context, id, otp string, expiry time.Time) error {
+	res := r.db.WithContext(ctx).
+		Model(&model.User{}).
+		Where("id = ?", id).
+		Updates(map[string]any{
+			"reset_otp":        otp,
+			"reset_otp_expiry": expiry,
+		})
+	if res.Error != nil {
+		return fmt.Errorf("set reset otp: %w", res.Error)
+	}
+	if res.RowsAffected == 0 {
+		return utils.ErrNotFound
+	}
+	return nil
+}
+
+// SetResetToken stores a password reset token and its expiry for the user,
+// consuming (clearing) any pending reset OTP.
 func (r *GormUserRepository) SetResetToken(ctx context.Context, id, token string, expiry time.Time) error {
 	res := r.db.WithContext(ctx).
 		Model(&model.User{}).
@@ -128,6 +148,8 @@ func (r *GormUserRepository) SetResetToken(ctx context.Context, id, token string
 		Updates(map[string]any{
 			"reset_token":        token,
 			"reset_token_expiry": expiry,
+			"reset_otp":          "",
+			"reset_otp_expiry":   time.Time{},
 		})
 	if res.Error != nil {
 		return fmt.Errorf("set reset token: %w", res.Error)

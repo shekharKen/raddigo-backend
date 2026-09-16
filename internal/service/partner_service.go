@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"net/url"
 	"strings"
 	"time"
 
@@ -25,7 +24,6 @@ type PartnerService struct {
 	repo         repository.PartnerRepository
 	ratings      repository.RatingRepository
 	mailer       mailer.Mailer
-	baseURL      string
 	slotDuration time.Duration
 	now          func() time.Time
 	id           func() string
@@ -35,7 +33,7 @@ type PartnerService struct {
 
 // NewPartnerService creates a PartnerService. devOTP, when non-empty, is used
 // as a fixed verification OTP instead of a random one (development only).
-func NewPartnerService(repo repository.PartnerRepository, ratings repository.RatingRepository, m mailer.Mailer, baseURL string, slotDuration time.Duration, devOTP string) *PartnerService {
+func NewPartnerService(repo repository.PartnerRepository, ratings repository.RatingRepository, m mailer.Mailer, slotDuration time.Duration, devOTP string) *PartnerService {
 	if slotDuration <= 0 {
 		slotDuration = 30 * time.Minute
 	}
@@ -43,7 +41,6 @@ func NewPartnerService(repo repository.PartnerRepository, ratings repository.Rat
 		repo:         repo,
 		ratings:      ratings,
 		mailer:       m,
-		baseURL:      strings.TrimRight(baseURL, "/"),
 		slotDuration: slotDuration,
 		now:          time.Now,
 		id:           func() string { return uuid.NewString() },
@@ -170,7 +167,7 @@ func (s *PartnerService) VerifyEmail(ctx context.Context, in dto.VerifyOTPReques
 	return s.repo.MarkEmailVerified(ctx, partner.ID)
 }
 
-// ForgotPassword issues a password reset token for the partner with the given
+// ForgotPassword issues a password reset OTP for the partner with the given
 // email and sends it by email. To avoid leaking which emails are registered, it
 // returns nil when no partner matches.
 func (s *PartnerService) ForgotPassword(ctx context.Context, in dto.ForgotPasswordRequest) error {
@@ -187,19 +184,51 @@ func (s *PartnerService) ForgotPassword(ctx context.Context, in dto.ForgotPasswo
 		return err
 	}
 
-	token, err := s.token()
+	otp, err := s.otp()
 	if err != nil {
-		return fmt.Errorf("generate token: %w", err)
+		return fmt.Errorf("generate otp: %w", err)
 	}
-	if err := s.repo.SetResetToken(ctx, partner.ID, token, s.now().Add(resetTokenTTL)); err != nil {
+	if err := s.repo.SetResetOTP(ctx, partner.ID, otp, s.now().Add(otpTTL)); err != nil {
 		return err
 	}
 
-	resetURL := fmt.Sprintf("%s/api/v1/auth/partner/reset-password?token=%s", s.baseURL, url.QueryEscape(token))
-	if err := s.mailer.SendPasswordResetEmail(ctx, partner.Email, resetURL); err != nil {
+	if err := s.mailer.SendPasswordResetEmail(ctx, partner.Email, otp); err != nil {
 		return fmt.Errorf("send password reset email: %w", err)
 	}
 	return nil
+}
+
+// VerifyForgotPasswordOTP confirms the password-reset OTP sent to the
+// partner's email and, on success, issues a short-lived reset token to be
+// used with ResetPassword to actually set the new password.
+func (s *PartnerService) VerifyForgotPasswordOTP(ctx context.Context, in dto.VerifyOTPRequest) (string, error) {
+	if err := validation.ValidateVerifyOTP(in); err != nil {
+		return "", err
+	}
+
+	email := strings.ToLower(strings.TrimSpace(in.Email))
+	partner, err := s.repo.GetByEmail(ctx, email)
+	if err != nil {
+		if errors.Is(err, utils.ErrNotFound) {
+			return "", utils.ErrInvalidOTP
+		}
+		return "", err
+	}
+	if partner.ResetOTP == "" || partner.ResetOTP != strings.TrimSpace(in.OTP) {
+		return "", utils.ErrInvalidOTP
+	}
+	if partner.ResetOTPExpiry.IsZero() || s.now().After(partner.ResetOTPExpiry) {
+		return "", utils.ErrInvalidOTP
+	}
+
+	token, err := s.token()
+	if err != nil {
+		return "", fmt.Errorf("generate token: %w", err)
+	}
+	if err := s.repo.SetResetToken(ctx, partner.ID, token, s.now().Add(resetTokenTTL)); err != nil {
+		return "", err
+	}
+	return token, nil
 }
 
 // ResetPassword validates the reset token and, if valid and unexpired, sets the
