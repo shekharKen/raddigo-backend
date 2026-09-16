@@ -20,7 +20,6 @@ type PartnerRepository interface {
 	EmailExists(ctx context.Context, email string) (bool, error)
 	GetByID(ctx context.Context, id string) (model.Partner, error)
 	GetByEmail(ctx context.Context, email string) (model.Partner, error)
-	GetByVerifyToken(ctx context.Context, token string) (model.Partner, error)
 	MarkEmailVerified(ctx context.Context, id string) error
 	UpdateProfile(ctx context.Context, id string, fields map[string]any) error
 	SetResetToken(ctx context.Context, id, token string, expiry time.Time) error
@@ -135,30 +134,15 @@ func (r *GormPartnerRepository) GetByEmail(ctx context.Context, email string) (m
 	return partner, nil
 }
 
-// GetByVerifyToken returns the partner matching the verification token, or
-// ErrNotFound if none matches.
-func (r *GormPartnerRepository) GetByVerifyToken(ctx context.Context, token string) (model.Partner, error) {
-	var partner model.Partner
-	if err := r.db.WithContext(ctx).
-		Preload("ServiceArea").
-		Preload("StoreAddress").
-		First(&partner, "verify_token = ?", token).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return model.Partner{}, utils.ErrNotFound
-		}
-		return model.Partner{}, fmt.Errorf("get partner by token: %w", err)
-	}
-	return partner, nil
-}
-
-// MarkEmailVerified flags the partner as verified and clears the token.
+// MarkEmailVerified flags the partner as verified and clears the OTP.
 func (r *GormPartnerRepository) MarkEmailVerified(ctx context.Context, id string) error {
 	res := r.db.WithContext(ctx).
 		Model(&model.Partner{}).
 		Where("id = ?", id).
 		Updates(map[string]any{
-			"email_verified": true,
-			"verify_token":   "",
+			"email_verified":    true,
+			"verify_otp":        "",
+			"verify_otp_expiry": time.Time{},
 		})
 	if res.Error != nil {
 		return fmt.Errorf("mark verified: %w", res.Error)

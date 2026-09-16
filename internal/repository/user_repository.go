@@ -19,7 +19,6 @@ type UserRepository interface {
 	EmailExists(ctx context.Context, email string) (bool, error)
 	GetByID(ctx context.Context, id string) (model.User, error)
 	GetByEmail(ctx context.Context, email string) (model.User, error)
-	GetByVerifyToken(ctx context.Context, token string) (model.User, error)
 	MarkEmailVerified(ctx context.Context, id string) error
 	UpdateProfile(ctx context.Context, id string, fields map[string]any) error
 	SetResetToken(ctx context.Context, id, token string, expiry time.Time) error
@@ -84,29 +83,15 @@ func (r *GormUserRepository) GetByEmail(ctx context.Context, email string) (mode
 	return user, nil
 }
 
-// GetByVerifyToken returns the user matching the verification token, or
-// ErrNotFound if none matches.
-func (r *GormUserRepository) GetByVerifyToken(ctx context.Context, token string) (model.User, error) {
-	var user model.User
-	if err := r.db.WithContext(ctx).
-		Preload("Addresses").
-		First(&user, "verify_token = ?", token).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return model.User{}, utils.ErrNotFound
-		}
-		return model.User{}, fmt.Errorf("get user by token: %w", err)
-	}
-	return user, nil
-}
-
-// MarkEmailVerified flags the user as verified and clears the token.
+// MarkEmailVerified flags the user as verified and clears the OTP.
 func (r *GormUserRepository) MarkEmailVerified(ctx context.Context, id string) error {
 	res := r.db.WithContext(ctx).
 		Model(&model.User{}).
 		Where("id = ?", id).
 		Updates(map[string]any{
-			"email_verified": true,
-			"verify_token":   "",
+			"email_verified":    true,
+			"verify_otp":        "",
+			"verify_otp_expiry": time.Time{},
 		})
 	if res.Error != nil {
 		return fmt.Errorf("mark verified: %w", res.Error)

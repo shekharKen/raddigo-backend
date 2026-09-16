@@ -67,10 +67,12 @@ make build
 The server listens on `:8080` and connects to
 `postgres://postgres:postgres@localhost:5432/raddigo?sslmode=disable` by
 default. Override via environment variables (see `.env.example`), including
-`DATABASE_URL` and `APP_BASE_URL` (used to build verification links).
+`DATABASE_URL` and `APP_BASE_URL` (used to build password reset links).
 
-> Email sending is stubbed by a development log mailer: the verification link is
-> written to the application logs instead of being emailed.
+> Email sending is stubbed by a development log mailer: the verification OTP is
+> written to the application logs instead of being emailed. Set `DEV_OTP` in
+> `.env` to use a fixed OTP (e.g. `123456`) for every registration, so you
+> don't need to check the logs during local development.
 
 ## API
 
@@ -80,7 +82,7 @@ Base path: `/api/v1`
 | ------ | ----------------------- | ------------------------------- |
 | GET    | `/healthz`              | Health check                    |
 | POST   | `/api/v1/auth/register` | Register a user + addresses     |
-| GET    | `/api/v1/auth/verify`   | Verify email via `?token=`      |
+| POST   | `/api/v1/auth/verify`   | Verify email with `email` + `otp` |
 
 ### Examples
 
@@ -106,6 +108,8 @@ curl -s -X POST localhost:8080/api/v1/auth/register \
     ]
   }'
 
-# verify (token is printed to the server logs by the dev mailer)
-curl -s 'localhost:8080/api/v1/auth/verify?token=<token>'
+# verify (otp is printed to the server logs by the dev mailer, or use DEV_OTP)
+curl -s -X POST localhost:8080/api/v1/auth/verify \
+  -H 'Content-Type: application/json' \
+  -d '{"email": "jane@example.com", "otp": "<otp>"}'
 ```

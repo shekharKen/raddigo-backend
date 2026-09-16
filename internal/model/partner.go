@@ -17,7 +17,8 @@ type Partner struct {
 	EndTime          string         `json:"end_time" gorm:"not null;default:''"`
 	ProfileImage     string         `json:"profile_image"`
 	EmailVerified    bool           `json:"email_verified" gorm:"not null;default:false"`
-	VerifyToken      string         `json:"-" gorm:"index"`
+	VerifyOTP        string         `json:"-" gorm:"index"`
+	VerifyOTPExpiry  time.Time      `json:"-"`
 	ResetToken       string         `json:"-" gorm:"index"`
 	ResetTokenExpiry time.Time      `json:"-"`
 	ServiceArea      []PolygonPoint `json:"service_area" gorm:"constraint:OnDelete:CASCADE"`

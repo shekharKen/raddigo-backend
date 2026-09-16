@@ -30,10 +30,12 @@ type PartnerService struct {
 	now          func() time.Time
 	id           func() string
 	token        func() (string, error)
+	otp          func() (string, error)
 }
 
-// NewPartnerService creates a PartnerService.
-func NewPartnerService(repo repository.PartnerRepository, ratings repository.RatingRepository, m mailer.Mailer, baseURL string, slotDuration time.Duration) *PartnerService {
+// NewPartnerService creates a PartnerService. devOTP, when non-empty, is used
+// as a fixed verification OTP instead of a random one (development only).
+func NewPartnerService(repo repository.PartnerRepository, ratings repository.RatingRepository, m mailer.Mailer, baseURL string, slotDuration time.Duration, devOTP string) *PartnerService {
 	if slotDuration <= 0 {
 		slotDuration = 30 * time.Minute
 	}
@@ -46,6 +48,7 @@ func NewPartnerService(repo repository.PartnerRepository, ratings repository.Rat
 		now:          time.Now,
 		id:           func() string { return uuid.NewString() },
 		token:        randomToken,
+		otp:          newOTPFunc(devOTP),
 	}
 }
 
@@ -70,9 +73,9 @@ func (s *PartnerService) Register(ctx context.Context, in dto.RegisterPartnerReq
 		return model.Partner{}, fmt.Errorf("hash password: %w", err)
 	}
 
-	token, err := s.token()
+	otp, err := s.otp()
 	if err != nil {
-		return model.Partner{}, fmt.Errorf("generate token: %w", err)
+		return model.Partner{}, fmt.Errorf("generate otp: %w", err)
 	}
 
 	now := s.now()
@@ -121,7 +124,8 @@ func (s *PartnerService) Register(ctx context.Context, in dto.RegisterPartnerReq
 		StartTime:       strings.TrimSpace(in.StartTime),
 		EndTime:         strings.TrimSpace(in.EndTime),
 		EmailVerified:   false,
-		VerifyToken:     token,
+		VerifyOTP:       otp,
+		VerifyOTPExpiry: now.Add(otpTTL),
 		ServiceArea:     points,
 		CreatedAt:       now,
 		UpdatedAt:       now,
@@ -131,27 +135,36 @@ func (s *PartnerService) Register(ctx context.Context, in dto.RegisterPartnerReq
 		return model.Partner{}, err
 	}
 
-	verifyURL := fmt.Sprintf("%s/api/v1/auth/partner/verify?token=%s", s.baseURL, url.QueryEscape(token))
-	if err := s.mailer.SendVerificationEmail(ctx, partner.Email, verifyURL); err != nil {
+	if err := s.mailer.SendVerificationEmail(ctx, partner.Email, otp); err != nil {
 		return model.Partner{}, fmt.Errorf("send verification email: %w", err)
 	}
 
 	return partner, nil
 }
 
-// VerifyEmail marks the partner owning the token as verified.
-func (s *PartnerService) VerifyEmail(ctx context.Context, token string) error {
-	token = strings.TrimSpace(token)
-	if token == "" {
-		return utils.ErrInvalidToken
+// VerifyEmail confirms the OTP sent to the partner's email and marks the
+// account as verified. Already-verified accounts are treated as a no-op success.
+func (s *PartnerService) VerifyEmail(ctx context.Context, in dto.VerifyOTPRequest) error {
+	if err := validation.ValidateVerifyOTP(in); err != nil {
+		return err
 	}
 
-	partner, err := s.repo.GetByVerifyToken(ctx, token)
+	email := strings.ToLower(strings.TrimSpace(in.Email))
+	partner, err := s.repo.GetByEmail(ctx, email)
 	if err != nil {
 		if errors.Is(err, utils.ErrNotFound) {
-			return utils.ErrInvalidToken
+			return utils.ErrInvalidOTP
 		}
 		return err
+	}
+	if partner.EmailVerified {
+		return nil
+	}
+	if partner.VerifyOTP == "" || partner.VerifyOTP != strings.TrimSpace(in.OTP) {
+		return utils.ErrInvalidOTP
+	}
+	if partner.VerifyOTPExpiry.IsZero() || s.now().After(partner.VerifyOTPExpiry) {
+		return utils.ErrInvalidOTP
 	}
 
 	return s.repo.MarkEmailVerified(ctx, partner.ID)

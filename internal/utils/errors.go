@@ -8,6 +8,7 @@ var (
 	ErrValidation         = errors.New("validation failed")
 	ErrEmailExists        = errors.New("email already registered")
 	ErrInvalidToken       = errors.New("invalid or expired verification token")
+	ErrInvalidOTP         = errors.New("invalid or expired otp")
 	ErrInvalidCredentials = errors.New("invalid email or password")
 	ErrNotFound           = errors.New("resource not found")
 	ErrNotVerified        = errors.New("account not verified")

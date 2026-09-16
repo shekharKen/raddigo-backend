@@ -25,6 +25,12 @@ import (
 // resetTokenTTL is how long a password reset token remains valid.
 const resetTokenTTL = time.Hour
 
+// otpTTL is how long an email verification OTP remains valid.
+const otpTTL = 15 * time.Minute
+
+// otpLength is the number of digits in a verification OTP.
+const otpLength = 6
+
 // UserService contains user registration and verification logic.
 type UserService struct {
 	repo    repository.UserRepository
@@ -33,10 +39,12 @@ type UserService struct {
 	now     func() time.Time
 	id      func() string
 	token   func() (string, error)
+	otp     func() (string, error)
 }
 
-// NewUserService creates a UserService.
-func NewUserService(repo repository.UserRepository, m mailer.Mailer, baseURL string) *UserService {
+// NewUserService creates a UserService. devOTP, when non-empty, is used as a
+// fixed verification OTP instead of a random one (development only).
+func NewUserService(repo repository.UserRepository, m mailer.Mailer, baseURL, devOTP string) *UserService {
 	return &UserService{
 		repo:    repo,
 		mailer:  m,
@@ -44,6 +52,7 @@ func NewUserService(repo repository.UserRepository, m mailer.Mailer, baseURL str
 		now:     time.Now,
 		id:      func() string { return uuid.NewString() },
 		token:   randomToken,
+		otp:     newOTPFunc(devOTP),
 	}
 }
 
@@ -69,9 +78,9 @@ func (s *UserService) Register(ctx context.Context, in dto.RegisterRequest) (mod
 		return model.User{}, fmt.Errorf("hash password: %w", err)
 	}
 
-	token, err := s.token()
+	otp, err := s.otp()
 	if err != nil {
-		return model.User{}, fmt.Errorf("generate token: %w", err)
+		return model.User{}, fmt.Errorf("generate otp: %w", err)
 	}
 
 	now := s.now()
@@ -110,7 +119,8 @@ func (s *UserService) Register(ctx context.Context, in dto.RegisterRequest) (mod
 		MobileNo:        strings.TrimSpace(in.MobileNo),
 		Password:        string(hashed),
 		EmailVerified:   false,
-		VerifyToken:     token,
+		VerifyOTP:       otp,
+		VerifyOTPExpiry: now.Add(otpTTL),
 		Addresses:       addresses,
 		CreatedAt:       now,
 		UpdatedAt:       now,
@@ -120,8 +130,7 @@ func (s *UserService) Register(ctx context.Context, in dto.RegisterRequest) (mod
 		return model.User{}, err
 	}
 
-	verifyURL := fmt.Sprintf("%s/api/v1/auth/verify?token=%s", s.baseURL, url.QueryEscape(token))
-	if err := s.mailer.SendVerificationEmail(ctx, user.Email, verifyURL); err != nil {
+	if err := s.mailer.SendVerificationEmail(ctx, user.Email, otp); err != nil {
 		return model.User{}, fmt.Errorf("send verification email: %w", err)
 	}
 
@@ -174,19 +183,29 @@ func (s *UserService) SetProfileImage(ctx context.Context, id, imageURL string) 
 	return s.repo.GetByID(ctx, id)
 }
 
-// VerifyEmail marks the user owning the token as verified.
-func (s *UserService) VerifyEmail(ctx context.Context, token string) error {
-	token = strings.TrimSpace(token)
-	if token == "" {
-		return utils.ErrInvalidToken
+// VerifyEmail confirms the OTP sent to the user's email and marks the account
+// as verified. Already-verified accounts are treated as a no-op success.
+func (s *UserService) VerifyEmail(ctx context.Context, in dto.VerifyOTPRequest) error {
+	if err := validation.ValidateVerifyOTP(in); err != nil {
+		return err
 	}
 
-	user, err := s.repo.GetByVerifyToken(ctx, token)
+	email := strings.ToLower(strings.TrimSpace(in.Email))
+	user, err := s.repo.GetByEmail(ctx, email)
 	if err != nil {
 		if errors.Is(err, utils.ErrNotFound) {
-			return utils.ErrInvalidToken
+			return utils.ErrInvalidOTP
 		}
 		return err
+	}
+	if user.EmailVerified {
+		return nil
+	}
+	if user.VerifyOTP == "" || user.VerifyOTP != strings.TrimSpace(in.OTP) {
+		return utils.ErrInvalidOTP
+	}
+	if user.VerifyOTPExpiry.IsZero() || s.now().After(user.VerifyOTPExpiry) {
+		return utils.ErrInvalidOTP
 	}
 
 	return s.repo.MarkEmailVerified(ctx, user.ID)
@@ -255,4 +274,27 @@ func randomToken() (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(b), nil
+}
+
+// newOTPFunc returns a generator that always yields devOTP when non-empty
+// (development only), or a random OTP otherwise.
+func newOTPFunc(devOTP string) func() (string, error) {
+	devOTP = strings.TrimSpace(devOTP)
+	if devOTP != "" {
+		return func() (string, error) { return devOTP, nil }
+	}
+	return randomOTP
+}
+
+// randomOTP generates a random numeric OTP of otpLength digits.
+func randomOTP() (string, error) {
+	const digits = "0123456789"
+	b := make([]byte, otpLength)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	for i, v := range b {
+		b[i] = digits[int(v)%len(digits)]
+	}
+	return string(b), nil
 }

@@ -30,6 +30,12 @@ type LoginRequest struct {
 	Password string `json:"password"`
 }
 
+// VerifyOTPRequest carries the email and OTP submitted to confirm registration.
+type VerifyOTPRequest struct {
+	Email string `json:"email"`
+	OTP   string `json:"otp"`
+}
+
 // RefreshRequest carries a refresh token to exchange for a new token pair.
 type RefreshRequest struct {
 	RefreshToken string `json:"refresh_token"`

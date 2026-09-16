@@ -7,7 +7,7 @@ import (
 
 // Mailer sends transactional emails.
 type Mailer interface {
-	SendVerificationEmail(ctx context.Context, to, verifyURL string) error
+	SendVerificationEmail(ctx context.Context, to, otp string) error
 	SendPasswordResetEmail(ctx context.Context, to, resetURL string) error
 }
 
@@ -21,11 +21,11 @@ func NewLogMailer(logger *slog.Logger) *LogMailer {
 	return &LogMailer{logger: logger}
 }
 
-// SendVerificationEmail logs the verification link for the recipient.
-func (m *LogMailer) SendVerificationEmail(_ context.Context, to, verifyURL string) error {
+// SendVerificationEmail logs the verification OTP for the recipient.
+func (m *LogMailer) SendVerificationEmail(_ context.Context, to, otp string) error {
 	m.logger.Info("verification email",
 		"to", to,
-		"verify_url", verifyURL,
+		"otp", otp,
 	)
 	return nil
 }

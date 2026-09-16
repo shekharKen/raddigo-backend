@@ -24,6 +24,7 @@ var (
 	mobileNoRe        = regexp.MustCompile(`^\d{10}$`)
 	nameRe            = regexp.MustCompile(`^[a-zA-Z][a-zA-Z\s'-]*$`)
 	timeOfDayRe       = regexp.MustCompile(`^([01]\d|2[0-3]):[0-5]\d$`)
+	otpRe             = regexp.MustCompile(`^\d{6}$`)
 )
 
 // ValidateRegister validates a registration request, returning a
@@ -68,6 +69,17 @@ func isValidName(name string) bool {
 func ValidateForgotPassword(in dto.ForgotPasswordRequest) error {
 	if !isValidEmail(in.Email) {
 		return utils.NewValidationError("email is invalid")
+	}
+	return nil
+}
+
+// ValidateVerifyOTP validates an email-verification OTP submission.
+func ValidateVerifyOTP(in dto.VerifyOTPRequest) error {
+	if !isValidEmail(in.Email) {
+		return utils.NewValidationError("email is invalid")
+	}
+	if !otpRe.MatchString(strings.TrimSpace(in.OTP)) {
+		return utils.NewValidationError("otp is invalid: expected a 6-digit code")
 	}
 	return nil
 }

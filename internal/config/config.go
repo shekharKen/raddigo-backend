@@ -20,6 +20,7 @@ type Config struct {
 	AccessTokenTTL  time.Duration
 	RefreshTokenTTL time.Duration
 	SlotDuration    time.Duration
+	DevOTP          string
 }
 
 // Load builds a Config from environment variables, falling back to sensible
@@ -39,6 +40,9 @@ func Load() Config {
 		AccessTokenTTL:  getDuration("ACCESS_TOKEN_TTL", 15*time.Minute),
 		RefreshTokenTTL: getDuration("REFRESH_TOKEN_TTL", 720*time.Hour),
 		SlotDuration:    getDuration("SLOT_DURATION", 30*time.Minute),
+		// DevOTP, when set, is used as the fixed verification OTP instead of a
+		// random one. Intended for local development only; leave unset in production.
+		DevOTP: getEnv("DEV_OTP", ""),
 	}
 }
 

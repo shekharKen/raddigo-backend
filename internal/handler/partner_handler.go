@@ -16,7 +16,7 @@ import (
 // partnerService abstracts partner registration and verification logic.
 type partnerService interface {
 	Register(ctx context.Context, in dto.RegisterPartnerRequest) (model.Partner, error)
-	VerifyEmail(ctx context.Context, token string) error
+	VerifyEmail(ctx context.Context, in dto.VerifyOTPRequest) error
 	ForgotPassword(ctx context.Context, in dto.ForgotPasswordRequest) error
 	ResetPassword(ctx context.Context, in dto.ResetPasswordRequest) error
 	SearchByLocation(ctx context.Context, lat, lng float64, page, pageSize int) (dto.PageResult[dto.PartnerSearchResult], error)
@@ -75,10 +75,14 @@ func (h *PartnerHandler) Login(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"auth": tokens})
 }
 
-// Verify handles GET /api/v1/auth/partner/verify.
+// Verify handles POST /api/v1/auth/partner/verify.
 func (h *PartnerHandler) Verify(c *gin.Context) {
-	token := c.Query("token")
-	if err := h.svc.VerifyEmail(c.Request.Context(), token); err != nil {
+	var in dto.VerifyOTPRequest
+	if err := c.ShouldBindJSON(&in); err != nil {
+		c.JSON(http.StatusBadRequest, utils.ErrorResponse{Error: "invalid request body"})
+		return
+	}
+	if err := h.svc.VerifyEmail(c.Request.Context(), in); err != nil {
 		h.writeServiceError(c, err)
 		return
 	}
@@ -149,6 +153,8 @@ func (h *PartnerHandler) writeServiceError(c *gin.Context, err error) {
 		c.JSON(http.StatusUnauthorized, utils.ErrorResponse{Error: "invalid email or password"})
 	case errors.Is(err, utils.ErrNotVerified):
 		c.JSON(http.StatusForbidden, utils.ErrorResponse{Error: "account not verified, please verify your email"})
+	case errors.Is(err, utils.ErrInvalidOTP):
+		c.JSON(http.StatusBadRequest, utils.ErrorResponse{Error: "invalid or expired otp"})
 	case errors.Is(err, utils.ErrInvalidToken):
 		c.JSON(http.StatusBadRequest, utils.ErrorResponse{Error: "invalid or expired verification token"})
 	default:
