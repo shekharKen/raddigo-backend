@@ -256,6 +256,29 @@ func (s *PartnerService) ResetPassword(ctx context.Context, in dto.ResetPassword
 	return s.repo.UpdatePassword(ctx, partner.ID, string(hashed))
 }
 
+// ChangePassword verifies the authenticated partner's current password and, on
+// success, replaces it with the new one.
+func (s *PartnerService) ChangePassword(ctx context.Context, id string, in dto.ChangePasswordRequest) error {
+	if err := validation.ValidateChangePassword(in); err != nil {
+		return err
+	}
+
+	partner, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return err
+	}
+
+	if err := bcrypt.CompareHashAndPassword([]byte(partner.Password), []byte(in.OldPassword)); err != nil {
+		return utils.ErrInvalidCredentials
+	}
+
+	hashed, err := bcrypt.GenerateFromPassword([]byte(in.NewPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return fmt.Errorf("hash password: %w", err)
+	}
+	return s.repo.UpdatePassword(ctx, id, string(hashed))
+}
+
 // GetProfile returns the partner with the given id.
 func (s *PartnerService) GetProfile(ctx context.Context, id string) (model.Partner, error) {
 	return s.repo.GetByID(ctx, id)

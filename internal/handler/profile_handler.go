@@ -31,6 +31,7 @@ type profileUserService interface {
 	GetProfile(ctx context.Context, id string) (model.User, error)
 	UpdateProfile(ctx context.Context, id string, in dto.UpdateUserProfileRequest) (model.User, error)
 	SetProfileImage(ctx context.Context, id, imageURL string) (model.User, error)
+	ChangePassword(ctx context.Context, id string, in dto.ChangePasswordRequest) error
 }
 
 // profilePartnerService abstracts partner profile retrieval and updates.
@@ -38,6 +39,7 @@ type profilePartnerService interface {
 	GetProfile(ctx context.Context, id string) (model.Partner, error)
 	UpdateProfile(ctx context.Context, id string, in dto.UpdatePartnerProfileRequest) (model.Partner, error)
 	SetProfileImage(ctx context.Context, id, imageURL string) (model.Partner, error)
+	ChangePassword(ctx context.Context, id string, in dto.ChangePasswordRequest) error
 }
 
 // ProfileHandler exposes profile endpoints for users and partners, including
@@ -100,6 +102,20 @@ func (h *ProfileHandler) UploadUserImage(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"user": user})
 }
 
+// ChangeUserPassword handles PUT /api/v1/user/:userId/change-password.
+func (h *ProfileHandler) ChangeUserPassword(c *gin.Context) {
+	var in dto.ChangePasswordRequest
+	if err := c.ShouldBindJSON(&in); err != nil {
+		c.JSON(http.StatusBadRequest, utils.ErrorResponse{Error: "invalid request body"})
+		return
+	}
+	if err := h.users.ChangePassword(c.Request.Context(), c.Param("userId"), in); err != nil {
+		h.writeServiceError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "password changed successfully"})
+}
+
 // GetPartnerProfile handles GET /api/v1/partner/:partnerId/profile.
 func (h *ProfileHandler) GetPartnerProfile(c *gin.Context) {
 	partner, err := h.partners.GetProfile(c.Request.Context(), c.Param("partnerId"))
@@ -137,6 +153,20 @@ func (h *ProfileHandler) UploadPartnerImage(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"partner": partner})
+}
+
+// ChangePartnerPassword handles PUT /api/v1/partner/:partnerId/change-password.
+func (h *ProfileHandler) ChangePartnerPassword(c *gin.Context) {
+	var in dto.ChangePasswordRequest
+	if err := c.ShouldBindJSON(&in); err != nil {
+		c.JSON(http.StatusBadRequest, utils.ErrorResponse{Error: "invalid request body"})
+		return
+	}
+	if err := h.partners.ChangePassword(c.Request.Context(), c.Param("partnerId"), in); err != nil {
+		h.writeServiceError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "password changed successfully"})
 }
 
 // storeUploadedImage validates and saves the "image" multipart file to the
@@ -192,6 +222,8 @@ func (h *ProfileHandler) writeServiceError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, utils.ErrValidation):
 		c.JSON(http.StatusBadRequest, utils.ErrorResponse{Error: err.Error()})
+	case errors.Is(err, utils.ErrInvalidCredentials):
+		c.JSON(http.StatusUnauthorized, utils.ErrorResponse{Error: "old password is incorrect"})
 	case errors.Is(err, utils.ErrNotFound):
 		c.JSON(http.StatusNotFound, utils.ErrorResponse{Error: "resource not found"})
 	default:

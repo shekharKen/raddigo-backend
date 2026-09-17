@@ -52,6 +52,13 @@ type ResetPasswordRequest struct {
 	Password string `json:"password"`
 }
 
+// ChangePasswordRequest carries the current and new password for an
+// authenticated account changing its own password.
+type ChangePasswordRequest struct {
+	OldPassword string `json:"old_password"`
+	NewPassword string `json:"new_password"`
+}
+
 // AuthResponse is the issued token set returned by login, refresh and register.
 type AuthResponse struct {
 	AccessToken  string `json:"access_token"`

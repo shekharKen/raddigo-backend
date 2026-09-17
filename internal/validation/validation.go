@@ -95,6 +95,21 @@ func ValidateResetPassword(in dto.ResetPasswordRequest) error {
 	return nil
 }
 
+// ValidateChangePassword validates a change-password request for an
+// authenticated account.
+func ValidateChangePassword(in dto.ChangePasswordRequest) error {
+	if strings.TrimSpace(in.OldPassword) == "" {
+		return utils.NewValidationError("old password is required")
+	}
+	if !isValidPassword(in.NewPassword) {
+		return utils.NewValidationError(fmt.Sprintf("password must be %d-%d characters with no spaces and include at least one lowercase letter, one uppercase letter, one number and one special character", minPasswordLength, maxPasswordLength))
+	}
+	if in.OldPassword == in.NewPassword {
+		return utils.NewValidationError("new password must be different from the old password")
+	}
+	return nil
+}
+
 func isValidEmail(email string) bool {
 	_, err := mail.ParseAddress(strings.TrimSpace(email))
 	return err == nil

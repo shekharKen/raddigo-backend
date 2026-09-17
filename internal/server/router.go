@@ -63,6 +63,7 @@ func NewRouter(
 			users.GET("/:userId/profile", middleware.RequireUser("userId"), profile.GetUserProfile)
 			users.PUT("/:userId/profile", middleware.RequireUser("userId"), profile.UpdateUserProfile)
 			users.POST("/:userId/profile/image", middleware.RequireUser("userId"), profile.UploadUserImage)
+			users.PUT("/:userId/change-password", middleware.RequireUser("userId"), profile.ChangeUserPassword)
 
 			users.POST("/:userId/addresses", middleware.RequireUser("userId"), address.Create)
 			users.GET("/:userId/addresses", middleware.RequireUser("userId"), address.List)
@@ -84,6 +85,7 @@ func NewRouter(
 			partners.GET("/:partnerId/profile", middleware.RequirePartner("partnerId"), profile.GetPartnerProfile)
 			partners.PUT("/:partnerId/profile", middleware.RequirePartner("partnerId"), profile.UpdatePartnerProfile)
 			partners.POST("/:partnerId/profile/image", middleware.RequirePartner("partnerId"), profile.UploadPartnerImage)
+			partners.PUT("/:partnerId/change-password", middleware.RequirePartner("partnerId"), profile.ChangePartnerPassword)
 
 			partners.POST("/:partnerId/user/:userId/rating", middleware.RequirePartner("partnerId"), rating.RateUser)
 			partners.GET("/:partnerId/ratings", rating.ListForPartner)

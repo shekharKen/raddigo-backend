@@ -334,6 +334,29 @@ func (s *UserService) ResetPassword(ctx context.Context, in dto.ResetPasswordReq
 	return s.repo.UpdatePassword(ctx, user.ID, string(hashed))
 }
 
+// ChangePassword verifies the authenticated user's current password and, on
+// success, replaces it with the new one.
+func (s *UserService) ChangePassword(ctx context.Context, id string, in dto.ChangePasswordRequest) error {
+	if err := validation.ValidateChangePassword(in); err != nil {
+		return err
+	}
+
+	user, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return err
+	}
+
+	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(in.OldPassword)); err != nil {
+		return utils.ErrInvalidCredentials
+	}
+
+	hashed, err := bcrypt.GenerateFromPassword([]byte(in.NewPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return fmt.Errorf("hash password: %w", err)
+	}
+	return s.repo.UpdatePassword(ctx, id, string(hashed))
+}
+
 func randomToken() (string, error) {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
