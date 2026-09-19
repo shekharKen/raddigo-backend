@@ -16,12 +16,16 @@ import (
 // bookingService abstracts slot-booking logic between users and partners.
 type bookingService interface {
 	Create(ctx context.Context, userID string, in dto.CreateBookingRequest) (dto.BookingResponse, error)
+	GetForUser(ctx context.Context, userID, bookingID string) (dto.BookingResponse, error)
+	GetForPartner(ctx context.Context, partnerID, bookingID string) (dto.BookingResponse, error)
 	ListForUser(ctx context.Context, userID string, page, pageSize int) (dto.PageResult[dto.BookingResponse], error)
 	ListForPartner(ctx context.Context, partnerID, status string, page, pageSize int) (dto.PageResult[dto.BookingResponse], error)
 	Accept(ctx context.Context, partnerID, bookingID string) (dto.BookingResponse, error)
 	Reject(ctx context.Context, partnerID, bookingID string) (dto.BookingResponse, error)
 	Update(ctx context.Context, userID, bookingID string, in dto.UpdateBookingRequest) (dto.BookingResponse, error)
 	Cancel(ctx context.Context, userID, bookingID string) (dto.BookingResponse, error)
+	OutForPickup(ctx context.Context, partnerID, bookingID string) (dto.BookingResponse, error)
+	Complete(ctx context.Context, partnerID, bookingID string) (dto.BookingResponse, error)
 }
 
 // BookingHandler exposes slot-booking HTTP handlers.
@@ -78,6 +82,26 @@ func (h *BookingHandler) Create(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusCreated, gin.H{"booking": booking})
+}
+
+// GetForUser handles GET /api/v1/user/bookings/:bookingId.
+func (h *BookingHandler) GetForUser(c *gin.Context) {
+	booking, err := h.svc.GetForUser(c.Request.Context(), c.GetString(middleware.ContextSubjectKey), c.Param("bookingId"))
+	if err != nil {
+		h.writeServiceError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"booking": booking})
+}
+
+// GetForPartner handles GET /api/v1/partner/bookings/:bookingId.
+func (h *BookingHandler) GetForPartner(c *gin.Context) {
+	booking, err := h.svc.GetForPartner(c.Request.Context(), c.GetString(middleware.ContextSubjectKey), c.Param("bookingId"))
+	if err != nil {
+		h.writeServiceError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"booking": booking})
 }
 
 // ListForUser handles GET /api/v1/user/bookings.
@@ -172,6 +196,26 @@ func (h *BookingHandler) Update(c *gin.Context) {
 // Cancel handles POST /api/v1/user/bookings/:bookingId/cancel.
 func (h *BookingHandler) Cancel(c *gin.Context) {
 	booking, err := h.svc.Cancel(c.Request.Context(), c.GetString(middleware.ContextSubjectKey), c.Param("bookingId"))
+	if err != nil {
+		h.writeServiceError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"booking": booking})
+}
+
+// OutForPickup handles POST /api/v1/partner/bookings/:bookingId/out-for-pickup.
+func (h *BookingHandler) OutForPickup(c *gin.Context) {
+	booking, err := h.svc.OutForPickup(c.Request.Context(), c.GetString(middleware.ContextSubjectKey), c.Param("bookingId"))
+	if err != nil {
+		h.writeServiceError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"booking": booking})
+}
+
+// Complete handles POST /api/v1/partner/bookings/:bookingId/complete.
+func (h *BookingHandler) Complete(c *gin.Context) {
+	booking, err := h.svc.Complete(c.Request.Context(), c.GetString(middleware.ContextSubjectKey), c.Param("bookingId"))
 	if err != nil {
 		h.writeServiceError(c, err)
 		return

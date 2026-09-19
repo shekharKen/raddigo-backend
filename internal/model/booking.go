@@ -6,10 +6,12 @@ import "time"
 type BookingStatus string
 
 const (
-	BookingPending   BookingStatus = "pending"
-	BookingAccepted  BookingStatus = "accepted"
-	BookingRejected  BookingStatus = "rejected"
-	BookingCancelled BookingStatus = "cancelled"
+	BookingPending      BookingStatus = "pending"
+	BookingAccepted     BookingStatus = "accepted"
+	BookingRejected     BookingStatus = "rejected"
+	BookingCancelled    BookingStatus = "cancelled"
+	BookingOutForPickup BookingStatus = "out_for_pickup"
+	BookingCompleted    BookingStatus = "completed"
 )
 
 // Booking is a user's request to book a partner's time slot for a scrap pickup.
@@ -44,4 +46,14 @@ type BookingImage struct {
 	Sequence  int       `json:"sequence" gorm:"not null"`
 	URL       string    `json:"url" gorm:"not null"`
 	CreatedAt time.Time `json:"created_at"`
+}
+
+// BookingStatusLog records a single status transition of a Booking, forming
+// an append-only audit trail (created, accepted/rejected, out for pickup,
+// completed, cancelled).
+type BookingStatusLog struct {
+	ID        string        `json:"id" gorm:"type:uuid;primaryKey"`
+	BookingID string        `json:"booking_id" gorm:"type:uuid;not null;index"`
+	Status    BookingStatus `json:"status" gorm:"type:varchar(20);not null"`
+	CreatedAt time.Time     `json:"created_at"`
 }

@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
+	"github.com/google/uuid"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
@@ -25,6 +27,9 @@ type BookingRepository interface {
 	Reject(ctx context.Context, bookingID, partnerID string) (model.Booking, error)
 	Update(ctx context.Context, bookingID, userID string, in BookingUpdateInput) (model.Booking, error)
 	Cancel(ctx context.Context, bookingID, userID string) (model.Booking, error)
+	OutForPickup(ctx context.Context, bookingID, partnerID string) (model.Booking, error)
+	Complete(ctx context.Context, bookingID, partnerID string) (model.Booking, error)
+	ListStatusLogs(ctx context.Context, bookingID string) ([]model.BookingStatusLog, error)
 }
 
 // BookingUpdateInput carries the mutable fields of a booking update. A nil
@@ -76,12 +81,14 @@ func (r *GormBookingRepository) PartnerExists(ctx context.Context, partnerID str
 	return count > 0, nil
 }
 
-// Create stores a new booking.
+// Create stores a new booking and its initial status log entry.
 func (r *GormBookingRepository) Create(ctx context.Context, booking *model.Booking) error {
-	if err := r.db.WithContext(ctx).Create(booking).Error; err != nil {
-		return fmt.Errorf("create booking: %w", err)
-	}
-	return nil
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(booking).Error; err != nil {
+			return fmt.Errorf("create booking: %w", err)
+		}
+		return insertBookingStatusLog(tx, booking.ID, booking.Status)
+	})
 }
 
 // GetByID returns a booking by id with its user, partner and images preloaded.
@@ -101,8 +108,8 @@ func (r *GormBookingRepository) GetByID(ctx context.Context, id string) (model.B
 	return booking, nil
 }
 
-// ListByUser returns a paginated set of a user's bookings, newest first, each
-// with its partner and images preloaded.
+// ListByUser returns a paginated set of a user's bookings ordered by the
+// nearest slot date/time first, each with its partner and images preloaded.
 func (r *GormBookingRepository) ListByUser(ctx context.Context, userID string, limit, offset int) ([]model.Booking, int64, error) {
 	base := func(db *gorm.DB) *gorm.DB {
 		return db.Model(&model.Booking{}).Where("user_id = ?", userID)
@@ -117,7 +124,7 @@ func (r *GormBookingRepository) ListByUser(ctx context.Context, userID string, l
 	if err := base(r.db.WithContext(ctx)).
 		Preload("Partner").
 		Preload("Images", func(db *gorm.DB) *gorm.DB { return db.Order("sequence ASC") }).
-		Order("created_at DESC").
+		Order("slot_date ASC, slot_start_time ASC").
 		Limit(limit).
 		Offset(offset).
 		Find(&bookings).Error; err != nil {
@@ -126,9 +133,9 @@ func (r *GormBookingRepository) ListByUser(ctx context.Context, userID string, l
 	return bookings, total, nil
 }
 
-// ListByPartner returns a paginated set of a partner's bookings, newest first,
-// each with the requesting user and images preloaded. An empty status returns
-// all states.
+// ListByPartner returns a paginated set of a partner's bookings ordered by the
+// nearest slot date/time first, each with the requesting user and images
+// preloaded. An empty status returns all states.
 func (r *GormBookingRepository) ListByPartner(ctx context.Context, partnerID string, status model.BookingStatus, limit, offset int) ([]model.Booking, int64, error) {
 	base := func(db *gorm.DB) *gorm.DB {
 		db = db.Model(&model.Booking{}).Where("partner_id = ?", partnerID)
@@ -147,7 +154,7 @@ func (r *GormBookingRepository) ListByPartner(ctx context.Context, partnerID str
 	if err := base(r.db.WithContext(ctx)).
 		Preload("User").
 		Preload("Images", func(db *gorm.DB) *gorm.DB { return db.Order("sequence ASC") }).
-		Order("created_at DESC").
+		Order("slot_date ASC, slot_start_time ASC").
 		Limit(limit).
 		Offset(offset).
 		Find(&bookings).Error; err != nil {
@@ -217,6 +224,10 @@ func (r *GormBookingRepository) Accept(ctx context.Context, bookingID, partnerID
 			return fmt.Errorf("reject competing bookings: %w", err)
 		}
 
+		if err := insertBookingStatusLog(tx, booking.ID, model.BookingAccepted); err != nil {
+			return err
+		}
+
 		if err := tx.Preload("User").Preload("Partner").
 			Preload("Images", func(db *gorm.DB) *gorm.DB { return db.Order("sequence ASC") }).
 			Where("id = ?", booking.ID).First(&accepted).Error; err != nil {
@@ -252,6 +263,9 @@ func (r *GormBookingRepository) Reject(ctx context.Context, bookingID, partnerID
 			Where("id = ?", booking.ID).
 			Update("status", model.BookingRejected).Error; err != nil {
 			return fmt.Errorf("reject booking: %w", err)
+		}
+		if err := insertBookingStatusLog(tx, booking.ID, model.BookingRejected); err != nil {
+			return err
 		}
 		if err := tx.Preload("User").Preload("Partner").
 			Preload("Images", func(db *gorm.DB) *gorm.DB { return db.Order("sequence ASC") }).
@@ -361,6 +375,9 @@ func (r *GormBookingRepository) Cancel(ctx context.Context, bookingID, userID st
 			Update("status", model.BookingCancelled).Error; err != nil {
 			return fmt.Errorf("cancel booking: %w", err)
 		}
+		if err := insertBookingStatusLog(tx, booking.ID, model.BookingCancelled); err != nil {
+			return err
+		}
 		if err := tx.Preload("Partner").
 			Preload("Images", func(db *gorm.DB) *gorm.DB { return db.Order("sequence ASC") }).
 			Where("id = ?", booking.ID).First(&cancelled).Error; err != nil {
@@ -372,4 +389,108 @@ func (r *GormBookingRepository) Cancel(ctx context.Context, bookingID, userID st
 		return model.Booking{}, err
 	}
 	return cancelled, nil
+}
+
+// OutForPickup transitions an accepted booking to out_for_pickup. It returns
+// utils.ErrNotFound when the booking does not belong to the partner and
+// utils.ErrInvalidState when it is not accepted.
+func (r *GormBookingRepository) OutForPickup(ctx context.Context, bookingID, partnerID string) (model.Booking, error) {
+	var updated model.Booking
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var booking model.Booking
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("id = ? AND partner_id = ?", bookingID, partnerID).
+			First(&booking).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return utils.ErrNotFound
+			}
+			return fmt.Errorf("load booking: %w", err)
+		}
+		if booking.Status != model.BookingAccepted {
+			return utils.ErrInvalidState
+		}
+		if err := tx.Model(&model.Booking{}).
+			Where("id = ?", booking.ID).
+			Update("status", model.BookingOutForPickup).Error; err != nil {
+			return fmt.Errorf("mark out for pickup: %w", err)
+		}
+		if err := insertBookingStatusLog(tx, booking.ID, model.BookingOutForPickup); err != nil {
+			return err
+		}
+		if err := tx.Preload("User").Preload("Partner").
+			Preload("Images", func(db *gorm.DB) *gorm.DB { return db.Order("sequence ASC") }).
+			Where("id = ?", booking.ID).First(&updated).Error; err != nil {
+			return fmt.Errorf("reload booking: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return model.Booking{}, err
+	}
+	return updated, nil
+}
+
+// Complete transitions an out-for-pickup booking to completed. It returns
+// utils.ErrNotFound when the booking does not belong to the partner and
+// utils.ErrInvalidState when it is not out for pickup.
+func (r *GormBookingRepository) Complete(ctx context.Context, bookingID, partnerID string) (model.Booking, error) {
+	var updated model.Booking
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var booking model.Booking
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("id = ? AND partner_id = ?", bookingID, partnerID).
+			First(&booking).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return utils.ErrNotFound
+			}
+			return fmt.Errorf("load booking: %w", err)
+		}
+		if booking.Status != model.BookingOutForPickup {
+			return utils.ErrInvalidState
+		}
+		if err := tx.Model(&model.Booking{}).
+			Where("id = ?", booking.ID).
+			Update("status", model.BookingCompleted).Error; err != nil {
+			return fmt.Errorf("complete booking: %w", err)
+		}
+		if err := insertBookingStatusLog(tx, booking.ID, model.BookingCompleted); err != nil {
+			return err
+		}
+		if err := tx.Preload("User").Preload("Partner").
+			Preload("Images", func(db *gorm.DB) *gorm.DB { return db.Order("sequence ASC") }).
+			Where("id = ?", booking.ID).First(&updated).Error; err != nil {
+			return fmt.Errorf("reload booking: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return model.Booking{}, err
+	}
+	return updated, nil
+}
+
+// ListStatusLogs returns a booking's status transition history, oldest first.
+func (r *GormBookingRepository) ListStatusLogs(ctx context.Context, bookingID string) ([]model.BookingStatusLog, error) {
+	var logs []model.BookingStatusLog
+	if err := r.db.WithContext(ctx).
+		Where("booking_id = ?", bookingID).
+		Order("created_at ASC").
+		Find(&logs).Error; err != nil {
+		return nil, fmt.Errorf("list booking status logs: %w", err)
+	}
+	return logs, nil
+}
+
+// insertBookingStatusLog records a booking status transition within tx.
+func insertBookingStatusLog(tx *gorm.DB, bookingID string, status model.BookingStatus) error {
+	log := model.BookingStatusLog{
+		ID:        uuid.NewString(),
+		BookingID: bookingID,
+		Status:    status,
+		CreatedAt: time.Now(),
+	}
+	if err := tx.Create(&log).Error; err != nil {
+		return fmt.Errorf("create booking status log: %w", err)
+	}
+	return nil
 }

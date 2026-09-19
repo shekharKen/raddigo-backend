@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"math"
 	"strings"
 	"time"
 
@@ -19,6 +20,7 @@ import (
 type BookingService struct {
 	repo         repository.BookingRepository
 	partners     repository.PartnerRepository
+	ratings      repository.RatingRepository
 	slotDuration time.Duration
 	now          func() time.Time
 	id           func() string
@@ -26,13 +28,14 @@ type BookingService struct {
 
 // NewBookingService creates a BookingService. slotDuration must match the value
 // used to build a partner's available slots so requested slots can be validated.
-func NewBookingService(repo repository.BookingRepository, partners repository.PartnerRepository, slotDuration time.Duration) *BookingService {
+func NewBookingService(repo repository.BookingRepository, partners repository.PartnerRepository, ratings repository.RatingRepository, slotDuration time.Duration) *BookingService {
 	if slotDuration <= 0 {
 		slotDuration = 30 * time.Minute
 	}
 	return &BookingService{
 		repo:         repo,
 		partners:     partners,
+		ratings:      ratings,
 		slotDuration: slotDuration,
 		now:          time.Now,
 		id:           func() string { return uuid.NewString() },
@@ -91,6 +94,61 @@ func (s *BookingService) Create(ctx context.Context, userID string, in dto.Creat
 
 	booking.Partner = &partner
 	return toBookingResponse(booking), nil
+}
+
+// GetForUser returns a single booking owned by the user, with its partner
+// details (including their aggregate rating) and status history, or
+// utils.ErrNotFound when it doesn't exist or belongs to someone else.
+func (s *BookingService) GetForUser(ctx context.Context, userID, bookingID string) (dto.BookingResponse, error) {
+	booking, err := s.repo.GetByID(ctx, bookingID)
+	if err != nil {
+		return dto.BookingResponse{}, err
+	}
+	if booking.UserID != userID {
+		return dto.BookingResponse{}, utils.ErrNotFound
+	}
+	return s.bookingDetails(ctx, booking)
+}
+
+// GetForPartner returns a single booking owned by the partner, with the
+// requesting user's details and status history, or utils.ErrNotFound when it
+// doesn't exist or belongs to a different partner.
+func (s *BookingService) GetForPartner(ctx context.Context, partnerID, bookingID string) (dto.BookingResponse, error) {
+	booking, err := s.repo.GetByID(ctx, bookingID)
+	if err != nil {
+		return dto.BookingResponse{}, err
+	}
+	if booking.PartnerID != partnerID {
+		return dto.BookingResponse{}, utils.ErrNotFound
+	}
+	return s.bookingDetails(ctx, booking)
+}
+
+// bookingDetails builds the full single-booking response: the base fields
+// plus the embedded partner's rating summary and the status history. Not used
+// by list endpoints to avoid an extra query per row.
+func (s *BookingService) bookingDetails(ctx context.Context, booking model.Booking) (dto.BookingResponse, error) {
+	res := toBookingResponse(booking)
+
+	if res.Partner != nil {
+		avg, total, err := s.ratings.Summary(ctx, repository.RatingFilter{
+			Direction: model.RatingUserToPartner,
+			PartnerID: res.Partner.ID,
+		})
+		if err != nil {
+			return dto.BookingResponse{}, err
+		}
+		res.Partner.AverageRating = math.Round(avg*100) / 100
+		res.Partner.TotalRatings = total
+	}
+
+	logs, err := s.listStatusLogs(ctx, booking.ID)
+	if err != nil {
+		return dto.BookingResponse{}, err
+	}
+	res.StatusLogs = logs
+
+	return res, nil
 }
 
 // ListForUser returns a user's bookings, each with its partner details.
@@ -194,6 +252,39 @@ func (s *BookingService) Cancel(ctx context.Context, userID, bookingID string) (
 	return toBookingResponse(booking), nil
 }
 
+// OutForPickup marks a partner's accepted booking as out for pickup.
+func (s *BookingService) OutForPickup(ctx context.Context, partnerID, bookingID string) (dto.BookingResponse, error) {
+	booking, err := s.repo.OutForPickup(ctx, bookingID, partnerID)
+	if err != nil {
+		return dto.BookingResponse{}, err
+	}
+	return toBookingResponse(booking), nil
+}
+
+// Complete marks a partner's out-for-pickup booking as completed.
+func (s *BookingService) Complete(ctx context.Context, partnerID, bookingID string) (dto.BookingResponse, error) {
+	booking, err := s.repo.Complete(ctx, bookingID, partnerID)
+	if err != nil {
+		return dto.BookingResponse{}, err
+	}
+	return toBookingResponse(booking), nil
+}
+
+func (s *BookingService) listStatusLogs(ctx context.Context, bookingID string) ([]dto.BookingStatusLogResponse, error) {
+	logs, err := s.repo.ListStatusLogs(ctx, bookingID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]dto.BookingStatusLogResponse, 0, len(logs))
+	for _, l := range logs {
+		out = append(out, dto.BookingStatusLogResponse{
+			Status:    string(l.Status),
+			CreatedAt: l.CreatedAt,
+		})
+	}
+	return out, nil
+}
+
 // slotIsValid reports whether start/end exactly matches one of the slots
 // generated from the partner's working window and slot duration.
 func slotIsValid(workStart, workEnd, start, end string, dur time.Duration) bool {
@@ -243,8 +334,12 @@ func parseBookingStatus(status string) (model.BookingStatus, error) {
 		return model.BookingRejected, nil
 	case string(model.BookingCancelled):
 		return model.BookingCancelled, nil
+	case string(model.BookingOutForPickup):
+		return model.BookingOutForPickup, nil
+	case string(model.BookingCompleted):
+		return model.BookingCompleted, nil
 	default:
-		return "", utils.NewValidationError("status is invalid: must be one of pending, accepted, rejected or cancelled")
+		return "", utils.NewValidationError("status is invalid: must be one of pending, accepted, rejected, cancelled, out_for_pickup or completed")
 	}
 }
 

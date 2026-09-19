@@ -56,6 +56,7 @@ func Migrate(db *gorm.DB) error {
 		&model.Rating{},
 		&model.Booking{},
 		&model.BookingImage{},
+		&model.BookingStatusLog{},
 	); err != nil {
 		return fmt.Errorf("auto migrate: %w", err)
 	}

@@ -49,14 +49,16 @@ type BookingUser struct {
 }
 
 // BookingPartner is the limited set of partner details exposed to a user on a
-// booking.
+// booking, including their aggregate rating.
 type BookingPartner struct {
-	ID              string `json:"id"`
-	FirstName       string `json:"first_name"`
-	LastName        string `json:"last_name"`
-	StoreName       string `json:"store_name"`
-	MobileExtension string `json:"mobile_extension"`
-	MobileNo        string `json:"mobile_no"`
+	ID              string  `json:"id"`
+	FirstName       string  `json:"first_name"`
+	LastName        string  `json:"last_name"`
+	StoreName       string  `json:"store_name"`
+	MobileExtension string  `json:"mobile_extension"`
+	MobileNo        string  `json:"mobile_no"`
+	AverageRating   float64 `json:"average_rating"`
+	TotalRatings    int64   `json:"total_ratings"`
 }
 
 // BookingResponse is the API representation of a stored booking.
@@ -76,4 +78,12 @@ type BookingResponse struct {
 	Partner         *BookingPartner `json:"partner,omitempty"`
 	CreatedAt       time.Time       `json:"created_at"`
 	UpdatedAt       time.Time       `json:"updated_at"`
+	// StatusLogs is only populated on the single-booking "get" endpoints.
+	StatusLogs []BookingStatusLogResponse `json:"status_logs,omitempty"`
+}
+
+// BookingStatusLogResponse is a single entry in a booking's status history.
+type BookingStatusLogResponse struct {
+	Status    string    `json:"status"`
+	CreatedAt time.Time `json:"created_at"`
 }
