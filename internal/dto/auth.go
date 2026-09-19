@@ -87,4 +87,6 @@ type UpdatePartnerProfileRequest struct {
 	StartTime       string          `json:"start_time"`
 	EndTime         string          `json:"end_time"`
 	StoreAddress    *AddressRequest `json:"store_address"`
+	// Polygon replaces the partner's operating-area polygon when provided (nil means unchanged).
+	Polygon []PolygonPointRequest `json:"polygon"`
 }

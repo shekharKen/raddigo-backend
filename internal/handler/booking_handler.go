@@ -20,6 +20,8 @@ type bookingService interface {
 	ListForPartner(ctx context.Context, partnerID, status string, page, pageSize int) (dto.PageResult[dto.BookingResponse], error)
 	Accept(ctx context.Context, partnerID, bookingID string) (dto.BookingResponse, error)
 	Reject(ctx context.Context, partnerID, bookingID string) (dto.BookingResponse, error)
+	Update(ctx context.Context, userID, bookingID string, in dto.UpdateBookingRequest) (dto.BookingResponse, error)
+	Cancel(ctx context.Context, userID, bookingID string) (dto.BookingResponse, error)
 }
 
 // BookingHandler exposes slot-booking HTTP handlers.
@@ -124,6 +126,58 @@ func (h *BookingHandler) Reject(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"booking": booking})
 }
 
+// Update handles PUT /api/v1/user/bookings/:bookingId. Like Create, it accepts
+// a multipart/form-data body; the "image" field is optional here and, when
+// present, replaces the booking's scrap image.
+func (h *BookingHandler) Update(c *gin.Context) {
+	in := dto.UpdateBookingRequest{
+		SlotDate:      c.PostForm("slot_date"),
+		SlotStartTime: c.PostForm("slot_start_time"),
+		SlotEndTime:   c.PostForm("slot_end_time"),
+		PickupAddress: c.PostForm("pickup_address"),
+		Description:   c.PostForm("description"),
+		Note:          c.PostForm("note"),
+	}
+
+	lat, err := strconv.ParseFloat(c.PostForm("pickup_latitude"), 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, utils.ErrorResponse{Error: "pickup_latitude is required and must be a number"})
+		return
+	}
+	lng, err := strconv.ParseFloat(c.PostForm("pickup_longitude"), 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, utils.ErrorResponse{Error: "pickup_longitude is required and must be a number"})
+		return
+	}
+	in.PickupLatitude = lat
+	in.PickupLongitude = lng
+
+	if _, _, ferr := c.Request.FormFile("image"); ferr == nil {
+		imageURL, ok := saveUploadedImage(c, "image", h.uploadDir, h.baseURL)
+		if !ok {
+			return
+		}
+		in.ScrapImage = imageURL
+	}
+
+	booking, err := h.svc.Update(c.Request.Context(), c.GetString(middleware.ContextSubjectKey), c.Param("bookingId"), in)
+	if err != nil {
+		h.writeServiceError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"booking": booking})
+}
+
+// Cancel handles POST /api/v1/user/bookings/:bookingId/cancel.
+func (h *BookingHandler) Cancel(c *gin.Context) {
+	booking, err := h.svc.Cancel(c.Request.Context(), c.GetString(middleware.ContextSubjectKey), c.Param("bookingId"))
+	if err != nil {
+		h.writeServiceError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"booking": booking})
+}
+
 // writeServiceError maps domain errors to HTTP responses.
 func (h *BookingHandler) writeServiceError(c *gin.Context, err error) {
 	switch {
@@ -134,7 +188,7 @@ func (h *BookingHandler) writeServiceError(c *gin.Context, err error) {
 	case errors.Is(err, utils.ErrSlotUnavailable):
 		c.JSON(http.StatusConflict, utils.ErrorResponse{Error: "slot is no longer available"})
 	case errors.Is(err, utils.ErrInvalidState):
-		c.JSON(http.StatusConflict, utils.ErrorResponse{Error: "booking is not pending and cannot be modified"})
+		c.JSON(http.StatusConflict, utils.ErrorResponse{Error: "booking is not in a state that allows this action"})
 	default:
 		c.JSON(http.StatusInternalServerError, utils.ErrorResponse{Error: "internal server error"})
 	}

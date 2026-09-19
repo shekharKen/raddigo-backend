@@ -180,6 +180,11 @@ func ValidateUpdatePartnerProfile(in dto.UpdatePartnerProfileRequest) error {
 	if s := strings.TrimSpace(in.EndTime); s != "" && !timeOfDayRe.MatchString(s) {
 		return utils.NewValidationError("end time is invalid: expected 24-hour format HH:MM (e.g. 18:00)")
 	}
+	if in.Polygon != nil {
+		if err := validatePolygon(in.Polygon); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

@@ -6,9 +6,10 @@ import "time"
 type BookingStatus string
 
 const (
-	BookingPending  BookingStatus = "pending"
-	BookingAccepted BookingStatus = "accepted"
-	BookingRejected BookingStatus = "rejected"
+	BookingPending   BookingStatus = "pending"
+	BookingAccepted  BookingStatus = "accepted"
+	BookingRejected  BookingStatus = "rejected"
+	BookingCancelled BookingStatus = "cancelled"
 )
 
 // Booking is a user's request to book a partner's time slot for a scrap pickup.

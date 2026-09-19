@@ -77,6 +77,8 @@ func NewRouter(
 
 			users.POST("/bookings", middleware.RequireUserRole(), booking.Create)
 			users.GET("/bookings", middleware.RequireUserRole(), booking.ListForUser)
+			users.PUT("/bookings/:bookingId", middleware.RequireUserRole(), booking.Update)
+			users.POST("/bookings/:bookingId/cancel", middleware.RequireUserRole(), booking.Cancel)
 		}
 
 		partners := v1.Group("/partner")

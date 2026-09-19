@@ -23,6 +23,7 @@ type PartnerRepository interface {
 	MarkEmailVerified(ctx context.Context, id string) error
 	UpdateProfile(ctx context.Context, id string, fields map[string]any) error
 	UpsertStoreAddress(ctx context.Context, partnerID string, address *model.Address) error
+	UpsertServiceArea(ctx context.Context, partnerID string, points []model.PolygonPoint) error
 	SetResetOTP(ctx context.Context, id, otp string, expiry time.Time) error
 	SetResetToken(ctx context.Context, id, token string, expiry time.Time) error
 	GetByResetToken(ctx context.Context, token string) (model.Partner, error)
@@ -209,6 +210,35 @@ func (r *GormPartnerRepository) UpsertStoreAddress(ctx context.Context, partnerI
 			Where("id = ?", existing.ID).
 			Updates(addressUpdateFields(address)).Error; err != nil {
 			return fmt.Errorf("update store address: %w", err)
+		}
+		return nil
+	})
+}
+
+// UpsertServiceArea replaces the partner's operating-area polygon vertices and
+// re-derives the geography(Polygon) column used for spatial search.
+func (r *GormPartnerRepository) UpsertServiceArea(ctx context.Context, partnerID string, points []model.PolygonPoint) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("partner_id = ?", partnerID).Delete(&model.PolygonPoint{}).Error; err != nil {
+			return fmt.Errorf("delete service area points: %w", err)
+		}
+		if len(points) > 0 {
+			if err := tx.Create(&points).Error; err != nil {
+				return fmt.Errorf("create service area points: %w", err)
+			}
+		}
+		wkt := polygonWKT(points)
+		if wkt == "" {
+			if err := tx.Exec(`UPDATE partners SET service_area = NULL WHERE id = ?`, partnerID).Error; err != nil {
+				return fmt.Errorf("clear service area: %w", err)
+			}
+			return nil
+		}
+		if err := tx.Exec(
+			`UPDATE partners SET service_area = ST_GeogFromText(?) WHERE id = ?`,
+			wkt, partnerID,
+		).Error; err != nil {
+			return fmt.Errorf("set service area: %w", err)
 		}
 		return nil
 	})

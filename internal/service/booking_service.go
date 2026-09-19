@@ -141,6 +141,59 @@ func (s *BookingService) Reject(ctx context.Context, partnerID, bookingID string
 	return toBookingResponse(booking), nil
 }
 
+// Update validates the request and updates a user's pending booking's slot
+// and pickup details, re-checking the new slot against the partner's working
+// hours and against any already-accepted competing booking.
+func (s *BookingService) Update(ctx context.Context, userID, bookingID string, in dto.UpdateBookingRequest) (dto.BookingResponse, error) {
+	if err := validation.ValidateUpdateBooking(in); err != nil {
+		return dto.BookingResponse{}, err
+	}
+
+	booking, err := s.repo.GetByID(ctx, bookingID)
+	if err != nil {
+		return dto.BookingResponse{}, err
+	}
+	if booking.UserID != userID {
+		return dto.BookingResponse{}, utils.ErrNotFound
+	}
+
+	partner, err := s.partners.GetByID(ctx, booking.PartnerID)
+	if err != nil {
+		return dto.BookingResponse{}, err
+	}
+
+	start := strings.TrimSpace(in.SlotStartTime)
+	end := strings.TrimSpace(in.SlotEndTime)
+	if !slotIsValid(partner.StartTime, partner.EndTime, start, end, s.slotDuration) {
+		return dto.BookingResponse{}, utils.NewValidationError("requested slot is not a valid slot within the partner's working hours")
+	}
+
+	updated, err := s.repo.Update(ctx, bookingID, userID, repository.BookingUpdateInput{
+		SlotDate:        strings.TrimSpace(in.SlotDate),
+		SlotStartTime:   start,
+		SlotEndTime:     end,
+		PickupLatitude:  in.PickupLatitude,
+		PickupLongitude: in.PickupLongitude,
+		PickupAddress:   strings.TrimSpace(in.PickupAddress),
+		ScrapImage:      in.ScrapImage,
+		Description:     strings.TrimSpace(in.Description),
+		Note:            strings.TrimSpace(in.Note),
+	})
+	if err != nil {
+		return dto.BookingResponse{}, err
+	}
+	return toBookingResponse(updated), nil
+}
+
+// Cancel marks a user's pending or accepted booking as cancelled.
+func (s *BookingService) Cancel(ctx context.Context, userID, bookingID string) (dto.BookingResponse, error) {
+	booking, err := s.repo.Cancel(ctx, bookingID, userID)
+	if err != nil {
+		return dto.BookingResponse{}, err
+	}
+	return toBookingResponse(booking), nil
+}
+
 // slotIsValid reports whether start/end exactly matches one of the slots
 // generated from the partner's working window and slot duration.
 func slotIsValid(workStart, workEnd, start, end string, dur time.Duration) bool {
@@ -163,8 +216,10 @@ func parseBookingStatus(status string) (model.BookingStatus, error) {
 		return model.BookingAccepted, nil
 	case string(model.BookingRejected):
 		return model.BookingRejected, nil
+	case string(model.BookingCancelled):
+		return model.BookingCancelled, nil
 	default:
-		return "", utils.NewValidationError("status is invalid: must be one of pending, accepted or rejected")
+		return "", utils.NewValidationError("status is invalid: must be one of pending, accepted, rejected or cancelled")
 	}
 }
 

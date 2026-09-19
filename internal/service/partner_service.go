@@ -78,18 +78,7 @@ func (s *PartnerService) Register(ctx context.Context, in dto.RegisterPartnerReq
 	now := s.now()
 	partnerID := s.id()
 
-	points := make([]model.PolygonPoint, 0, len(in.Polygon))
-	for i, p := range in.Polygon {
-		points = append(points, model.PolygonPoint{
-			ID:        s.id(),
-			PartnerID: partnerID,
-			Sequence:  i,
-			Latitude:  p.Latitude,
-			Longitude: p.Longitude,
-			CreatedAt: now,
-			UpdatedAt: now,
-		})
-	}
+	points := buildPolygonPoints(partnerID, in.Polygon, now, s.id)
 
 	storeAddress := &model.Address{
 		ID:        s.id(),
@@ -322,7 +311,7 @@ func (s *PartnerService) UpdateProfile(ctx context.Context, id string, in dto.Up
 		setIfChanged(fields, "end_time", strings.TrimSpace(in.EndTime), current.EndTime)
 	}
 
-	if len(fields) == 0 && in.StoreAddress == nil {
+	if len(fields) == 0 && in.StoreAddress == nil && in.Polygon == nil {
 		return current, nil
 	}
 
@@ -340,7 +329,32 @@ func (s *PartnerService) UpdateProfile(ctx context.Context, id string, in dto.Up
 		}
 	}
 
+	if in.Polygon != nil {
+		points := buildPolygonPoints(id, in.Polygon, s.now(), s.id)
+		if err := s.repo.UpsertServiceArea(ctx, id, points); err != nil {
+			return model.Partner{}, err
+		}
+	}
+
 	return s.repo.GetByID(ctx, id)
+}
+
+// buildPolygonPoints converts polygon vertices from the request into ordered,
+// ID-assigned model rows for the given partner.
+func buildPolygonPoints(partnerID string, in []dto.PolygonPointRequest, now time.Time, genID func() string) []model.PolygonPoint {
+	points := make([]model.PolygonPoint, 0, len(in))
+	for i, p := range in {
+		points = append(points, model.PolygonPoint{
+			ID:        genID(),
+			PartnerID: partnerID,
+			Sequence:  i,
+			Latitude:  p.Latitude,
+			Longitude: p.Longitude,
+			CreatedAt: now,
+			UpdatedAt: now,
+		})
+	}
+	return points
 }
 
 // buildStoreAddress builds a partner store address model from the request input.

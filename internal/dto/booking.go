@@ -19,6 +19,22 @@ type CreateBookingRequest struct {
 	ScrapImage      string  `json:"-"`
 }
 
+// UpdateBookingRequest is the payload accepted when a user updates a pending
+// booking. It is submitted as multipart/form-data like CreateBookingRequest;
+// ScrapImage is populated by the handler only when a new image is uploaded,
+// otherwise the existing image is kept.
+type UpdateBookingRequest struct {
+	SlotDate        string  `json:"slot_date"`
+	SlotStartTime   string  `json:"slot_start_time"`
+	SlotEndTime     string  `json:"slot_end_time"`
+	PickupLatitude  float64 `json:"pickup_latitude"`
+	PickupLongitude float64 `json:"pickup_longitude"`
+	PickupAddress   string  `json:"pickup_address"`
+	Description     string  `json:"description"`
+	Note            string  `json:"note"`
+	ScrapImage      string  `json:"-"`
+}
+
 // BookingUser is the limited set of user details exposed to a partner on a
 // booking request.
 type BookingUser struct {

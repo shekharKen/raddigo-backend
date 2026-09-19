@@ -23,6 +23,22 @@ type BookingRepository interface {
 	SlotAccepted(ctx context.Context, partnerID, slotDate, slotStartTime string) (bool, error)
 	Accept(ctx context.Context, bookingID, partnerID string) (model.Booking, error)
 	Reject(ctx context.Context, bookingID, partnerID string) (model.Booking, error)
+	Update(ctx context.Context, bookingID, userID string, in BookingUpdateInput) (model.Booking, error)
+	Cancel(ctx context.Context, bookingID, userID string) (model.Booking, error)
+}
+
+// BookingUpdateInput carries the mutable fields of a booking update. An empty
+// ScrapImage means the existing image is kept.
+type BookingUpdateInput struct {
+	SlotDate        string
+	SlotStartTime   string
+	SlotEndTime     string
+	PickupLatitude  float64
+	PickupLongitude float64
+	PickupAddress   string
+	ScrapImage      string
+	Description     string
+	Note            string
 }
 
 // GormBookingRepository is a GORM-backed BookingRepository.
@@ -241,4 +257,102 @@ func (r *GormBookingRepository) Reject(ctx context.Context, bookingID, partnerID
 		return model.Booking{}, err
 	}
 	return rejected, nil
+}
+
+// Update updates a user's pending booking with new slot and pickup details. It
+// returns utils.ErrNotFound when the booking does not belong to the user,
+// utils.ErrInvalidState when it is not pending, and utils.ErrSlotUnavailable
+// when the requested slot has already been accepted for another booking.
+func (r *GormBookingRepository) Update(ctx context.Context, bookingID, userID string, in BookingUpdateInput) (model.Booking, error) {
+	var updated model.Booking
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var booking model.Booking
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("id = ? AND user_id = ?", bookingID, userID).
+			First(&booking).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return utils.ErrNotFound
+			}
+			return fmt.Errorf("load booking: %w", err)
+		}
+		if booking.Status != model.BookingPending {
+			return utils.ErrInvalidState
+		}
+
+		var taken int64
+		if err := tx.Model(&model.Booking{}).
+			Where("partner_id = ? AND slot_date = ? AND slot_start_time = ? AND status = ? AND id <> ?",
+				booking.PartnerID, in.SlotDate, in.SlotStartTime, model.BookingAccepted, booking.ID).
+			Count(&taken).Error; err != nil {
+			return fmt.Errorf("count accepted slot: %w", err)
+		}
+		if taken > 0 {
+			return utils.ErrSlotUnavailable
+		}
+
+		fields := map[string]interface{}{
+			"slot_date":        in.SlotDate,
+			"slot_start_time":  in.SlotStartTime,
+			"slot_end_time":    in.SlotEndTime,
+			"pickup_latitude":  in.PickupLatitude,
+			"pickup_longitude": in.PickupLongitude,
+			"pickup_address":   in.PickupAddress,
+			"description":      in.Description,
+			"note":             in.Note,
+		}
+		if in.ScrapImage != "" {
+			fields["scrap_image"] = in.ScrapImage
+		}
+		if err := tx.Model(&model.Booking{}).
+			Where("id = ?", booking.ID).
+			Updates(fields).Error; err != nil {
+			return fmt.Errorf("update booking: %w", err)
+		}
+
+		if err := tx.Preload("Partner").
+			Where("id = ?", booking.ID).First(&updated).Error; err != nil {
+			return fmt.Errorf("reload booking: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return model.Booking{}, err
+	}
+	return updated, nil
+}
+
+// Cancel transitions a pending or accepted booking owned by the user to
+// cancelled. It returns utils.ErrNotFound when the booking does not belong to
+// the user and utils.ErrInvalidState when it has already been rejected or
+// cancelled.
+func (r *GormBookingRepository) Cancel(ctx context.Context, bookingID, userID string) (model.Booking, error) {
+	var cancelled model.Booking
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var booking model.Booking
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("id = ? AND user_id = ?", bookingID, userID).
+			First(&booking).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return utils.ErrNotFound
+			}
+			return fmt.Errorf("load booking: %w", err)
+		}
+		if booking.Status != model.BookingPending && booking.Status != model.BookingAccepted {
+			return utils.ErrInvalidState
+		}
+		if err := tx.Model(&model.Booking{}).
+			Where("id = ?", booking.ID).
+			Update("status", model.BookingCancelled).Error; err != nil {
+			return fmt.Errorf("cancel booking: %w", err)
+		}
+		if err := tx.Preload("Partner").
+			Where("id = ?", booking.ID).First(&cancelled).Error; err != nil {
+			return fmt.Errorf("reload booking: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return model.Booking{}, err
+	}
+	return cancelled, nil
 }

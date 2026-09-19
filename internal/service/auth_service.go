@@ -41,14 +41,14 @@ func (s *AuthService) LoginUser(ctx context.Context, in dto.LoginRequest) (dto.A
 	if err := isVerified(user.EmailVerified); err != nil {
 		return dto.AuthResponse{}, err
 	}
-	
+
 	pair, err := s.IssueForUser(user.ID)
 	if err != nil {
 		return dto.AuthResponse{}, err
 	}
-	
+
 	pair.Info = user
-	return pair, nil	
+	return pair, nil
 }
 
 // LoginPartner authenticates a partner by email/password and issues a token pair.
@@ -73,7 +73,7 @@ func (s *AuthService) LoginPartner(ctx context.Context, in dto.LoginRequest) (dt
 	if err != nil {
 		return dto.AuthResponse{}, err
 	}
-	
+
 	pair.Info = partner
 	return pair, nil
 }
