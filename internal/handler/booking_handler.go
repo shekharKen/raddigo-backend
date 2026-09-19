@@ -39,8 +39,9 @@ func NewBookingHandler(svc bookingService, uploadDir, publicBaseURL string) *Boo
 }
 
 // Create handles POST /api/v1/user/bookings. It accepts a multipart/form-data
-// body carrying the booking fields plus one or more scrap images in the
-// repeated "images" field. The booking is attributed to the authenticated user.
+// body carrying the booking fields plus zero or more scrap images in the
+// repeated "images" field (images are optional for now). The booking is
+// attributed to the authenticated user.
 func (h *BookingHandler) Create(c *gin.Context) {
 	in := dto.CreateBookingRequest{
 		PartnerID:     c.PostForm("partner_id"),

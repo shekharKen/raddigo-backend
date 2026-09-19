@@ -42,18 +42,15 @@ func saveUploadedImage(c *gin.Context, field, uploadDir, baseURL string) (string
 
 // saveUploadedImages validates and stores every multipart file under the named
 // field (repeated form parts), returning their public URLs in submission
-// order. On failure it writes the error response and returns ok=false.
+// order. The field is optional; an absent field yields an empty, non-nil
+// slice. On failure it writes the error response and returns ok=false.
 func saveUploadedImages(c *gin.Context, field, uploadDir, baseURL string, maxCount int) ([]string, bool) {
 	form, err := c.MultipartForm()
 	if err != nil {
-		c.JSON(http.StatusBadRequest, utils.ErrorResponse{Error: fmt.Sprintf("at least one image file is required (multipart field '%s')", field)})
+		c.JSON(http.StatusBadRequest, utils.ErrorResponse{Error: "invalid multipart form data"})
 		return nil, false
 	}
 	files := form.File[field]
-	if len(files) == 0 {
-		c.JSON(http.StatusBadRequest, utils.ErrorResponse{Error: fmt.Sprintf("at least one image file is required (multipart field '%s')", field)})
-		return nil, false
-	}
 	if len(files) > maxCount {
 		c.JSON(http.StatusBadRequest, utils.ErrorResponse{Error: fmt.Sprintf("too many images: up to %d allowed", maxCount)})
 		return nil, false

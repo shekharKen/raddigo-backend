@@ -99,11 +99,8 @@ func validateBookingPickup(lat, lng float64, address string) error {
 }
 
 // validateBookingImages validates the number of scrap images attached to a
-// create or update request.
+// create or update request. Images are optional for now, up to the cap.
 func validateBookingImages(images []string) error {
-	if len(images) < 1 {
-		return utils.NewValidationError("at least one scrap image is required")
-	}
 	if len(images) > dto.MaxBookingImages {
 		return utils.NewValidationError(fmt.Sprintf("too many images: up to %d allowed", dto.MaxBookingImages))
 	}
