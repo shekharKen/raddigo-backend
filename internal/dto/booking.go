@@ -2,37 +2,40 @@ package dto
 
 import "time"
 
+// MaxBookingImages caps the number of scrap images accepted per booking.
+const MaxBookingImages = 5
+
 // CreateBookingRequest is the payload accepted when a user books a partner's
-// slot. It is submitted as multipart/form-data so the scrap image can be sent
-// alongside the booking details; ScrapImage is populated by the handler after
-// the uploaded file is stored.
+// slot. It is submitted as multipart/form-data so the scrap images can be sent
+// alongside the booking details; ScrapImages is populated by the handler after
+// the uploaded files are stored.
 type CreateBookingRequest struct {
-	PartnerID       string  `json:"partner_id"`
-	SlotDate        string  `json:"slot_date"`
-	SlotStartTime   string  `json:"slot_start_time"`
-	SlotEndTime     string  `json:"slot_end_time"`
-	PickupLatitude  float64 `json:"pickup_latitude"`
-	PickupLongitude float64 `json:"pickup_longitude"`
-	PickupAddress   string  `json:"pickup_address"`
-	Description     string  `json:"description"`
-	Note            string  `json:"note"`
-	ScrapImage      string  `json:"-"`
+	PartnerID       string   `json:"partner_id"`
+	SlotDate        string   `json:"slot_date"`
+	SlotStartTime   string   `json:"slot_start_time"`
+	SlotEndTime     string   `json:"slot_end_time"`
+	PickupLatitude  float64  `json:"pickup_latitude"`
+	PickupLongitude float64  `json:"pickup_longitude"`
+	PickupAddress   string   `json:"pickup_address"`
+	Description     string   `json:"description"`
+	Note            string   `json:"note"`
+	ScrapImages     []string `json:"-"`
 }
 
 // UpdateBookingRequest is the payload accepted when a user updates a pending
 // booking. It is submitted as multipart/form-data like CreateBookingRequest;
-// ScrapImage is populated by the handler only when a new image is uploaded,
-// otherwise the existing image is kept.
+// ScrapImages is populated by the handler only when new images are uploaded
+// (nil means the existing images are kept, replacing them entirely otherwise).
 type UpdateBookingRequest struct {
-	SlotDate        string  `json:"slot_date"`
-	SlotStartTime   string  `json:"slot_start_time"`
-	SlotEndTime     string  `json:"slot_end_time"`
-	PickupLatitude  float64 `json:"pickup_latitude"`
-	PickupLongitude float64 `json:"pickup_longitude"`
-	PickupAddress   string  `json:"pickup_address"`
-	Description     string  `json:"description"`
-	Note            string  `json:"note"`
-	ScrapImage      string  `json:"-"`
+	SlotDate        string   `json:"slot_date"`
+	SlotStartTime   string   `json:"slot_start_time"`
+	SlotEndTime     string   `json:"slot_end_time"`
+	PickupLatitude  float64  `json:"pickup_latitude"`
+	PickupLongitude float64  `json:"pickup_longitude"`
+	PickupAddress   string   `json:"pickup_address"`
+	Description     string   `json:"description"`
+	Note            string   `json:"note"`
+	ScrapImages     []string `json:"-"`
 }
 
 // BookingUser is the limited set of user details exposed to a partner on a
@@ -66,7 +69,7 @@ type BookingResponse struct {
 	PickupLatitude  float64         `json:"pickup_latitude"`
 	PickupLongitude float64         `json:"pickup_longitude"`
 	PickupAddress   string          `json:"pickup_address"`
-	ScrapImage      string          `json:"scrap_image"`
+	Images          []string        `json:"images"`
 	Description     string          `json:"description"`
 	Note            string          `json:"note"`
 	User            *BookingUser    `json:"user,omitempty"`

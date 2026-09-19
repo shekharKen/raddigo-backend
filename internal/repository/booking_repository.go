@@ -27,8 +27,9 @@ type BookingRepository interface {
 	Cancel(ctx context.Context, bookingID, userID string) (model.Booking, error)
 }
 
-// BookingUpdateInput carries the mutable fields of a booking update. An empty
-// ScrapImage means the existing image is kept.
+// BookingUpdateInput carries the mutable fields of a booking update. A nil
+// Images means the existing images are kept; a non-nil Images wholesale
+// replaces them.
 type BookingUpdateInput struct {
 	SlotDate        string
 	SlotStartTime   string
@@ -36,7 +37,7 @@ type BookingUpdateInput struct {
 	PickupLatitude  float64
 	PickupLongitude float64
 	PickupAddress   string
-	ScrapImage      string
+	Images          []model.BookingImage
 	Description     string
 	Note            string
 }
@@ -83,12 +84,13 @@ func (r *GormBookingRepository) Create(ctx context.Context, booking *model.Booki
 	return nil
 }
 
-// GetByID returns a booking by id with its user and partner preloaded.
+// GetByID returns a booking by id with its user, partner and images preloaded.
 func (r *GormBookingRepository) GetByID(ctx context.Context, id string) (model.Booking, error) {
 	var booking model.Booking
 	if err := r.db.WithContext(ctx).
 		Preload("User").
 		Preload("Partner").
+		Preload("Images", func(db *gorm.DB) *gorm.DB { return db.Order("sequence ASC") }).
 		Where("id = ?", id).
 		First(&booking).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -100,7 +102,7 @@ func (r *GormBookingRepository) GetByID(ctx context.Context, id string) (model.B
 }
 
 // ListByUser returns a paginated set of a user's bookings, newest first, each
-// with its partner preloaded.
+// with its partner and images preloaded.
 func (r *GormBookingRepository) ListByUser(ctx context.Context, userID string, limit, offset int) ([]model.Booking, int64, error) {
 	base := func(db *gorm.DB) *gorm.DB {
 		return db.Model(&model.Booking{}).Where("user_id = ?", userID)
@@ -114,6 +116,7 @@ func (r *GormBookingRepository) ListByUser(ctx context.Context, userID string, l
 	var bookings []model.Booking
 	if err := base(r.db.WithContext(ctx)).
 		Preload("Partner").
+		Preload("Images", func(db *gorm.DB) *gorm.DB { return db.Order("sequence ASC") }).
 		Order("created_at DESC").
 		Limit(limit).
 		Offset(offset).
@@ -124,7 +127,8 @@ func (r *GormBookingRepository) ListByUser(ctx context.Context, userID string, l
 }
 
 // ListByPartner returns a paginated set of a partner's bookings, newest first,
-// each with the requesting user preloaded. An empty status returns all states.
+// each with the requesting user and images preloaded. An empty status returns
+// all states.
 func (r *GormBookingRepository) ListByPartner(ctx context.Context, partnerID string, status model.BookingStatus, limit, offset int) ([]model.Booking, int64, error) {
 	base := func(db *gorm.DB) *gorm.DB {
 		db = db.Model(&model.Booking{}).Where("partner_id = ?", partnerID)
@@ -142,6 +146,7 @@ func (r *GormBookingRepository) ListByPartner(ctx context.Context, partnerID str
 	var bookings []model.Booking
 	if err := base(r.db.WithContext(ctx)).
 		Preload("User").
+		Preload("Images", func(db *gorm.DB) *gorm.DB { return db.Order("sequence ASC") }).
 		Order("created_at DESC").
 		Limit(limit).
 		Offset(offset).
@@ -213,6 +218,7 @@ func (r *GormBookingRepository) Accept(ctx context.Context, bookingID, partnerID
 		}
 
 		if err := tx.Preload("User").Preload("Partner").
+			Preload("Images", func(db *gorm.DB) *gorm.DB { return db.Order("sequence ASC") }).
 			Where("id = ?", booking.ID).First(&accepted).Error; err != nil {
 			return fmt.Errorf("reload booking: %w", err)
 		}
@@ -248,6 +254,7 @@ func (r *GormBookingRepository) Reject(ctx context.Context, bookingID, partnerID
 			return fmt.Errorf("reject booking: %w", err)
 		}
 		if err := tx.Preload("User").Preload("Partner").
+			Preload("Images", func(db *gorm.DB) *gorm.DB { return db.Order("sequence ASC") }).
 			Where("id = ?", booking.ID).First(&rejected).Error; err != nil {
 			return fmt.Errorf("reload booking: %w", err)
 		}
@@ -300,16 +307,25 @@ func (r *GormBookingRepository) Update(ctx context.Context, bookingID, userID st
 			"description":      in.Description,
 			"note":             in.Note,
 		}
-		if in.ScrapImage != "" {
-			fields["scrap_image"] = in.ScrapImage
-		}
 		if err := tx.Model(&model.Booking{}).
 			Where("id = ?", booking.ID).
 			Updates(fields).Error; err != nil {
 			return fmt.Errorf("update booking: %w", err)
 		}
 
+		if in.Images != nil {
+			if err := tx.Where("booking_id = ?", booking.ID).Delete(&model.BookingImage{}).Error; err != nil {
+				return fmt.Errorf("delete booking images: %w", err)
+			}
+			if len(in.Images) > 0 {
+				if err := tx.Create(&in.Images).Error; err != nil {
+					return fmt.Errorf("create booking images: %w", err)
+				}
+			}
+		}
+
 		if err := tx.Preload("Partner").
+			Preload("Images", func(db *gorm.DB) *gorm.DB { return db.Order("sequence ASC") }).
 			Where("id = ?", booking.ID).First(&updated).Error; err != nil {
 			return fmt.Errorf("reload booking: %w", err)
 		}
@@ -346,6 +362,7 @@ func (r *GormBookingRepository) Cancel(ctx context.Context, bookingID, userID st
 			return fmt.Errorf("cancel booking: %w", err)
 		}
 		if err := tx.Preload("Partner").
+			Preload("Images", func(db *gorm.DB) *gorm.DB { return db.Order("sequence ASC") }).
 			Where("id = ?", booking.ID).First(&cancelled).Error; err != nil {
 			return fmt.Errorf("reload booking: %w", err)
 		}

@@ -39,8 +39,8 @@ func NewBookingHandler(svc bookingService, uploadDir, publicBaseURL string) *Boo
 }
 
 // Create handles POST /api/v1/user/bookings. It accepts a multipart/form-data
-// body carrying the booking fields plus the scrap image in the "image" field.
-// The booking is attributed to the authenticated user.
+// body carrying the booking fields plus one or more scrap images in the
+// repeated "images" field. The booking is attributed to the authenticated user.
 func (h *BookingHandler) Create(c *gin.Context) {
 	in := dto.CreateBookingRequest{
 		PartnerID:     c.PostForm("partner_id"),
@@ -65,11 +65,11 @@ func (h *BookingHandler) Create(c *gin.Context) {
 	in.PickupLatitude = lat
 	in.PickupLongitude = lng
 
-	imageURL, ok := saveUploadedImage(c, "image", h.uploadDir, h.baseURL)
+	imageURLs, ok := saveUploadedImages(c, "images", h.uploadDir, h.baseURL, dto.MaxBookingImages)
 	if !ok {
 		return
 	}
-	in.ScrapImage = imageURL
+	in.ScrapImages = imageURLs
 
 	booking, err := h.svc.Create(c.Request.Context(), c.GetString(middleware.ContextSubjectKey), in)
 	if err != nil {
@@ -127,8 +127,8 @@ func (h *BookingHandler) Reject(c *gin.Context) {
 }
 
 // Update handles PUT /api/v1/user/bookings/:bookingId. Like Create, it accepts
-// a multipart/form-data body; the "image" field is optional here and, when
-// present, replaces the booking's scrap image.
+// a multipart/form-data body; the "images" field is optional here and, when
+// present, wholesale replaces the booking's scrap images.
 func (h *BookingHandler) Update(c *gin.Context) {
 	in := dto.UpdateBookingRequest{
 		SlotDate:      c.PostForm("slot_date"),
@@ -152,12 +152,12 @@ func (h *BookingHandler) Update(c *gin.Context) {
 	in.PickupLatitude = lat
 	in.PickupLongitude = lng
 
-	if _, _, ferr := c.Request.FormFile("image"); ferr == nil {
-		imageURL, ok := saveUploadedImage(c, "image", h.uploadDir, h.baseURL)
+	if form, ferr := c.MultipartForm(); ferr == nil && len(form.File["images"]) > 0 {
+		imageURLs, ok := saveUploadedImages(c, "images", h.uploadDir, h.baseURL, dto.MaxBookingImages)
 		if !ok {
 			return
 		}
-		in.ScrapImage = imageURL
+		in.ScrapImages = imageURLs
 	}
 
 	booking, err := h.svc.Update(c.Request.Context(), c.GetString(middleware.ContextSubjectKey), c.Param("bookingId"), in)

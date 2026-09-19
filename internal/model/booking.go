@@ -17,21 +17,31 @@ const (
 // as taken (enforced by a partial unique index on accepted bookings) so no other
 // booking for the same partner/date/start-time can be accepted.
 type Booking struct {
-	ID              string        `json:"id" gorm:"type:uuid;primaryKey"`
-	UserID          string        `json:"user_id" gorm:"type:uuid;not null;index"`
-	PartnerID       string        `json:"partner_id" gorm:"type:uuid;not null;index"`
-	SlotDate        string        `json:"slot_date" gorm:"type:varchar(10);not null"`
-	SlotStartTime   string        `json:"slot_start_time" gorm:"type:varchar(5);not null"`
-	SlotEndTime     string        `json:"slot_end_time" gorm:"type:varchar(5);not null"`
-	Status          BookingStatus `json:"status" gorm:"type:varchar(20);not null;default:pending;index"`
-	PickupLatitude  float64       `json:"pickup_latitude" gorm:"not null"`
-	PickupLongitude float64       `json:"pickup_longitude" gorm:"not null"`
-	PickupAddress   string        `json:"pickup_address"`
-	ScrapImage      string        `json:"scrap_image" gorm:"not null"`
-	Description     string        `json:"description"`
-	Note            string        `json:"note"`
-	User            *User         `json:"user,omitempty" gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE"`
-	Partner         *Partner      `json:"partner,omitempty" gorm:"foreignKey:PartnerID;constraint:OnDelete:CASCADE"`
-	CreatedAt       time.Time     `json:"created_at"`
-	UpdatedAt       time.Time     `json:"updated_at"`
+	ID              string         `json:"id" gorm:"type:uuid;primaryKey"`
+	UserID          string         `json:"user_id" gorm:"type:uuid;not null;index"`
+	PartnerID       string         `json:"partner_id" gorm:"type:uuid;not null;index"`
+	SlotDate        string         `json:"slot_date" gorm:"type:varchar(10);not null"`
+	SlotStartTime   string         `json:"slot_start_time" gorm:"type:varchar(5);not null"`
+	SlotEndTime     string         `json:"slot_end_time" gorm:"type:varchar(5);not null"`
+	Status          BookingStatus  `json:"status" gorm:"type:varchar(20);not null;default:pending;index"`
+	PickupLatitude  float64        `json:"pickup_latitude" gorm:"not null"`
+	PickupLongitude float64        `json:"pickup_longitude" gorm:"not null"`
+	PickupAddress   string         `json:"pickup_address"`
+	Images          []BookingImage `json:"images,omitempty" gorm:"foreignKey:BookingID;constraint:OnDelete:CASCADE"`
+	Description     string         `json:"description"`
+	Note            string         `json:"note"`
+	User            *User          `json:"user,omitempty" gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE"`
+	Partner         *Partner       `json:"partner,omitempty" gorm:"foreignKey:PartnerID;constraint:OnDelete:CASCADE"`
+	CreatedAt       time.Time      `json:"created_at"`
+	UpdatedAt       time.Time      `json:"updated_at"`
+}
+
+// BookingImage is a single ordered scrap image attached to a Booking. The
+// ordering of Sequence defines display order.
+type BookingImage struct {
+	ID        string    `json:"id" gorm:"type:uuid;primaryKey"`
+	BookingID string    `json:"booking_id" gorm:"type:uuid;not null;index"`
+	Sequence  int       `json:"sequence" gorm:"not null"`
+	URL       string    `json:"url" gorm:"not null"`
+	CreatedAt time.Time `json:"created_at"`
 }

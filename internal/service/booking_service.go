@@ -79,12 +79,12 @@ func (s *BookingService) Create(ctx context.Context, userID string, in dto.Creat
 		PickupLatitude:  in.PickupLatitude,
 		PickupLongitude: in.PickupLongitude,
 		PickupAddress:   strings.TrimSpace(in.PickupAddress),
-		ScrapImage:      in.ScrapImage,
 		Description:     strings.TrimSpace(in.Description),
 		Note:            strings.TrimSpace(in.Note),
 		CreatedAt:       now,
 		UpdatedAt:       now,
 	}
+	booking.Images = buildBookingImages(booking.ID, in.ScrapImages, now, s.id)
 	if err := s.repo.Create(ctx, &booking); err != nil {
 		return dto.BookingResponse{}, err
 	}
@@ -175,7 +175,7 @@ func (s *BookingService) Update(ctx context.Context, userID, bookingID string, i
 		PickupLatitude:  in.PickupLatitude,
 		PickupLongitude: in.PickupLongitude,
 		PickupAddress:   strings.TrimSpace(in.PickupAddress),
-		ScrapImage:      in.ScrapImage,
+		Images:          buildBookingImagesIfProvided(bookingID, in.ScrapImages, s.now(), s.id),
 		Description:     strings.TrimSpace(in.Description),
 		Note:            strings.TrimSpace(in.Note),
 	})
@@ -203,6 +203,31 @@ func slotIsValid(workStart, workEnd, start, end string, dur time.Duration) bool 
 		}
 	}
 	return false
+}
+
+// buildBookingImages converts uploaded image URLs into ordered, ID-assigned
+// model rows for the given booking.
+func buildBookingImages(bookingID string, urls []string, now time.Time, genID func() string) []model.BookingImage {
+	images := make([]model.BookingImage, 0, len(urls))
+	for i, url := range urls {
+		images = append(images, model.BookingImage{
+			ID:        genID(),
+			BookingID: bookingID,
+			Sequence:  i,
+			URL:       url,
+			CreatedAt: now,
+		})
+	}
+	return images
+}
+
+// buildBookingImagesIfProvided returns nil (keep existing images unchanged)
+// when urls is nil, otherwise builds the replacement image rows.
+func buildBookingImagesIfProvided(bookingID string, urls []string, now time.Time, genID func() string) []model.BookingImage {
+	if urls == nil {
+		return nil
+	}
+	return buildBookingImages(bookingID, urls, now, genID)
 }
 
 // parseBookingStatus maps an optional status filter string to a BookingStatus.
@@ -235,6 +260,10 @@ func toBookingPage(bookings []model.Booking, page, pageSize int, total int64) dt
 }
 
 func toBookingResponse(b model.Booking) dto.BookingResponse {
+	images := make([]string, 0, len(b.Images))
+	for _, img := range b.Images {
+		images = append(images, img.URL)
+	}
 	res := dto.BookingResponse{
 		ID:              b.ID,
 		Status:          string(b.Status),
@@ -244,7 +273,7 @@ func toBookingResponse(b model.Booking) dto.BookingResponse {
 		PickupLatitude:  b.PickupLatitude,
 		PickupLongitude: b.PickupLongitude,
 		PickupAddress:   b.PickupAddress,
-		ScrapImage:      b.ScrapImage,
+		Images:          images,
 		Description:     b.Description,
 		Note:            b.Note,
 		CreatedAt:       b.CreatedAt,

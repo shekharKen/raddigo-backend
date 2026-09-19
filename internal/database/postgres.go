@@ -55,6 +55,7 @@ func Migrate(db *gorm.DB) error {
 		&model.PolygonPoint{},
 		&model.Rating{},
 		&model.Booking{},
+		&model.BookingImage{},
 	); err != nil {
 		return fmt.Errorf("auto migrate: %w", err)
 	}
@@ -79,6 +80,28 @@ func Migrate(db *gorm.DB) error {
 		END $$;
 	`).Error; err != nil {
 		return fmt.Errorf("migrate legacy store addresses: %w", err)
+	}
+
+	// Migrate any pre-existing single scrap_image value into the new
+	// booking_images table, then drop the deprecated column. Idempotent:
+	// skipped once the column is gone.
+	if err := db.Exec(`
+		DO $$
+		BEGIN
+			IF EXISTS (
+				SELECT 1 FROM information_schema.columns
+				WHERE table_name = 'bookings' AND column_name = 'scrap_image'
+			) THEN
+				INSERT INTO booking_images (id, booking_id, sequence, url, created_at)
+				SELECT gen_random_uuid(), id, 0, scrap_image, created_at
+				FROM bookings
+				WHERE scrap_image IS NOT NULL AND scrap_image <> '';
+
+				ALTER TABLE bookings DROP COLUMN scrap_image;
+			END IF;
+		END $$;
+	`).Error; err != nil {
+		return fmt.Errorf("migrate legacy scrap_image column: %w", err)
 	}
 
 	// A geography(Polygon) column plus a GiST index makes ST_Covers point-in-

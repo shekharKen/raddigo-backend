@@ -33,6 +33,9 @@ func ValidateCreateBooking(in dto.CreateBookingRequest) error {
 	if err := validateBookingPickup(in.PickupLatitude, in.PickupLongitude, in.PickupAddress); err != nil {
 		return err
 	}
+	if err := validateBookingImages(in.ScrapImages); err != nil {
+		return err
+	}
 	return validateBookingNotes(in.Description, in.Note)
 }
 
@@ -44,6 +47,12 @@ func ValidateUpdateBooking(in dto.UpdateBookingRequest) error {
 	}
 	if err := validateBookingPickup(in.PickupLatitude, in.PickupLongitude, in.PickupAddress); err != nil {
 		return err
+	}
+	// nil ScrapImages means the existing images are kept unchanged.
+	if in.ScrapImages != nil {
+		if err := validateBookingImages(in.ScrapImages); err != nil {
+			return err
+		}
 	}
 	return validateBookingNotes(in.Description, in.Note)
 }
@@ -85,6 +94,18 @@ func validateBookingPickup(lat, lng float64, address string) error {
 	}
 	if len(strings.TrimSpace(address)) > maxPickupAddressLength {
 		return utils.NewValidationError(fmt.Sprintf("pickup_address is too long: up to %d characters", maxPickupAddressLength))
+	}
+	return nil
+}
+
+// validateBookingImages validates the number of scrap images attached to a
+// create or update request.
+func validateBookingImages(images []string) error {
+	if len(images) < 1 {
+		return utils.NewValidationError("at least one scrap image is required")
+	}
+	if len(images) > dto.MaxBookingImages {
+		return utils.NewValidationError(fmt.Sprintf("too many images: up to %d allowed", dto.MaxBookingImages))
 	}
 	return nil
 }
