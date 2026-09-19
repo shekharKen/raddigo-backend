@@ -48,18 +48,15 @@ type ProfileHandler struct {
 	users     profileUserService
 	partners  profilePartnerService
 	uploadDir string
-	baseURL   string
 }
 
 // NewProfileHandler creates a ProfileHandler. uploadDir is the directory where
-// images are written; publicBaseURL is the externally reachable base URL used
-// to build the stored image URL.
-func NewProfileHandler(users profileUserService, partners profilePartnerService, uploadDir, publicBaseURL string) *ProfileHandler {
+// images are written.
+func NewProfileHandler(users profileUserService, partners profilePartnerService, uploadDir string) *ProfileHandler {
 	return &ProfileHandler{
 		users:     users,
 		partners:  partners,
 		uploadDir: uploadDir,
-		baseURL:   publicBaseURL,
 	}
 }
 
@@ -170,8 +167,9 @@ func (h *ProfileHandler) ChangePartnerPassword(c *gin.Context) {
 }
 
 // storeUploadedImage validates and saves the "image" multipart file to the
-// upload directory, returning the public URL. On failure it writes the error
-// response and returns ok=false.
+// upload directory, returning its path relative to the public root (the
+// current base URL is applied to it at response time). On failure it writes
+// the error response and returns ok=false.
 func (h *ProfileHandler) storeUploadedImage(c *gin.Context) (string, bool) {
 	fileHeader, err := c.FormFile("image")
 	if err != nil {
@@ -214,7 +212,7 @@ func (h *ProfileHandler) storeUploadedImage(c *gin.Context) (string, bool) {
 		return "", false
 	}
 
-	return fmt.Sprintf("%s/public/uploads/%s", h.baseURL, filename), true
+	return fmt.Sprintf("/public/uploads/%s", filename), true
 }
 
 // writeServiceError maps domain errors to HTTP responses.

@@ -29,22 +29,23 @@ var uploadImageTypes = map[string]string{
 }
 
 // saveUploadedImage validates and stores the named multipart image field in the
-// upload directory, returning the public URL. On failure it writes the error
-// response and returns ok=false.
-func saveUploadedImage(c *gin.Context, field, uploadDir, baseURL string) (string, bool) {
+// upload directory, returning its stored path (relative to the public root, not
+// a full URL, so the API's current base URL is applied at response time). On
+// failure it writes the error response and returns ok=false.
+func saveUploadedImage(c *gin.Context, field, uploadDir string) (string, bool) {
 	fileHeader, err := c.FormFile(field)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, utils.ErrorResponse{Error: fmt.Sprintf("image file is required (multipart field '%s')", field)})
 		return "", false
 	}
-	return storeImageFile(c, fileHeader, uploadDir, baseURL)
+	return storeImageFile(c, fileHeader, uploadDir)
 }
 
 // saveUploadedImages validates and stores every multipart file under the named
-// field (repeated form parts), returning their public URLs in submission
+// field (repeated form parts), returning their stored paths in submission
 // order. The field is optional; an absent field yields an empty, non-nil
 // slice. On failure it writes the error response and returns ok=false.
-func saveUploadedImages(c *gin.Context, field, uploadDir, baseURL string, maxCount int) ([]string, bool) {
+func saveUploadedImages(c *gin.Context, field, uploadDir string, maxCount int) ([]string, bool) {
 	form, err := c.MultipartForm()
 	if err != nil {
 		c.JSON(http.StatusBadRequest, utils.ErrorResponse{Error: "invalid multipart form data"})
@@ -58,7 +59,7 @@ func saveUploadedImages(c *gin.Context, field, uploadDir, baseURL string, maxCou
 
 	urls := make([]string, 0, len(files))
 	for _, fileHeader := range files {
-		url, ok := storeImageFile(c, fileHeader, uploadDir, baseURL)
+		url, ok := storeImageFile(c, fileHeader, uploadDir)
 		if !ok {
 			return nil, false
 		}
@@ -68,10 +69,13 @@ func saveUploadedImages(c *gin.Context, field, uploadDir, baseURL string, maxCou
 }
 
 // storeImageFile validates a single multipart file header and stores it in
-// uploadDir, returning its public URL. On failure it writes the error response
-// and returns ok=false. The content type is sniffed from the file bytes and the
-// stored filename is server-generated to prevent path traversal.
-func storeImageFile(c *gin.Context, fileHeader *multipart.FileHeader, uploadDir, baseURL string) (string, bool) {
+// uploadDir, returning its path relative to the public root (e.g.
+// "/public/uploads/<file>"). Storing a relative path rather than a full URL
+// means responses can apply whatever base URL is currently configured instead
+// of freezing in the one active at upload time. On failure it writes the error
+// response and returns ok=false. The content type is sniffed from the file
+// bytes and the stored filename is server-generated to prevent path traversal.
+func storeImageFile(c *gin.Context, fileHeader *multipart.FileHeader, uploadDir string) (string, bool) {
 	if fileHeader.Size > maxUploadImageSize {
 		c.JSON(http.StatusRequestEntityTooLarge, utils.ErrorResponse{Error: "image must not exceed 5 MB"})
 		return "", false
@@ -104,5 +108,5 @@ func storeImageFile(c *gin.Context, fileHeader *multipart.FileHeader, uploadDir,
 		return "", false
 	}
 
-	return fmt.Sprintf("%s/public/uploads/%s", baseURL, filename), true
+	return fmt.Sprintf("/public/uploads/%s", filename), true
 }

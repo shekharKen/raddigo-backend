@@ -25,6 +25,7 @@ type PartnerService struct {
 	ratings      repository.RatingRepository
 	mailer       mailer.Mailer
 	slotDuration time.Duration
+	baseURL      string
 	now          func() time.Time
 	id           func() string
 	token        func() (string, error)
@@ -33,7 +34,9 @@ type PartnerService struct {
 
 // NewPartnerService creates a PartnerService. devOTP, when non-empty, is used
 // as a fixed verification OTP instead of a random one (development only).
-func NewPartnerService(repo repository.PartnerRepository, ratings repository.RatingRepository, m mailer.Mailer, slotDuration time.Duration, devOTP string) *PartnerService {
+// baseURL is prefixed onto stored relative image paths (e.g. profile images)
+// when returning them to clients.
+func NewPartnerService(repo repository.PartnerRepository, ratings repository.RatingRepository, m mailer.Mailer, slotDuration time.Duration, devOTP, baseURL string) *PartnerService {
 	if slotDuration <= 0 {
 		slotDuration = 30 * time.Minute
 	}
@@ -42,6 +45,7 @@ func NewPartnerService(repo repository.PartnerRepository, ratings repository.Rat
 		ratings:      ratings,
 		mailer:       m,
 		slotDuration: slotDuration,
+		baseURL:      baseURL,
 		now:          time.Now,
 		id:           func() string { return uuid.NewString() },
 		token:        randomToken,
@@ -270,7 +274,11 @@ func (s *PartnerService) ChangePassword(ctx context.Context, id string, in dto.C
 
 // GetProfile returns the partner with the given id.
 func (s *PartnerService) GetProfile(ctx context.Context, id string) (model.Partner, error) {
-	return s.repo.GetByID(ctx, id)
+	partner, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return model.Partner{}, err
+	}
+	return s.withResolvedImage(partner), nil
 }
 
 // UpdateProfile validates and persists the editable profile fields, updating
@@ -312,7 +320,7 @@ func (s *PartnerService) UpdateProfile(ctx context.Context, id string, in dto.Up
 	}
 
 	if len(fields) == 0 && in.StoreAddress == nil && in.Polygon == nil {
-		return current, nil
+		return s.withResolvedImage(current), nil
 	}
 
 	if len(fields) > 0 {
@@ -336,7 +344,11 @@ func (s *PartnerService) UpdateProfile(ctx context.Context, id string, in dto.Up
 		}
 	}
 
-	return s.repo.GetByID(ctx, id)
+	updated, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return model.Partner{}, err
+	}
+	return s.withResolvedImage(updated), nil
 }
 
 // buildPolygonPoints converts polygon vertices from the request into ordered,
@@ -378,7 +390,7 @@ func (s *PartnerService) buildStoreAddress(partnerID string, in dto.AddressReque
 	}
 }
 
-// SetProfileImage persists the profile image URL for the partner.
+// SetProfileImage persists the profile image path for the partner.
 func (s *PartnerService) SetProfileImage(ctx context.Context, id, imageURL string) (model.Partner, error) {
 	fields := map[string]any{
 		"profile_image": imageURL,
@@ -387,7 +399,17 @@ func (s *PartnerService) SetProfileImage(ctx context.Context, id, imageURL strin
 	if err := s.repo.UpdateProfile(ctx, id, fields); err != nil {
 		return model.Partner{}, err
 	}
-	return s.repo.GetByID(ctx, id)
+	partner, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return model.Partner{}, err
+	}
+	return s.withResolvedImage(partner), nil
+}
+
+// withResolvedImage returns p with ProfileImage rewritten to an absolute URL.
+func (s *PartnerService) withResolvedImage(p model.Partner) model.Partner {
+	p.ProfileImage = resolveImageURL(s.baseURL, p.ProfileImage)
+	return p
 }
 
 // SearchByLocation returns a paginated set of verified partners whose operating

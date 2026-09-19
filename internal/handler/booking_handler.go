@@ -32,14 +32,12 @@ type bookingService interface {
 type BookingHandler struct {
 	svc       bookingService
 	uploadDir string
-	baseURL   string
 }
 
 // NewBookingHandler creates a BookingHandler. uploadDir is where scrap images
-// are written; publicBaseURL is the externally reachable base URL used to build
-// the stored image URL.
-func NewBookingHandler(svc bookingService, uploadDir, publicBaseURL string) *BookingHandler {
-	return &BookingHandler{svc: svc, uploadDir: uploadDir, baseURL: publicBaseURL}
+// are written.
+func NewBookingHandler(svc bookingService, uploadDir string) *BookingHandler {
+	return &BookingHandler{svc: svc, uploadDir: uploadDir}
 }
 
 // Create handles POST /api/v1/user/bookings. It accepts a multipart/form-data
@@ -70,7 +68,7 @@ func (h *BookingHandler) Create(c *gin.Context) {
 	in.PickupLatitude = lat
 	in.PickupLongitude = lng
 
-	imageURLs, ok := saveUploadedImages(c, "images", h.uploadDir, h.baseURL, dto.MaxBookingImages)
+	imageURLs, ok := saveUploadedImages(c, "images", h.uploadDir, dto.MaxBookingImages)
 	if !ok {
 		return
 	}
@@ -178,7 +176,7 @@ func (h *BookingHandler) Update(c *gin.Context) {
 	in.PickupLongitude = lng
 
 	if form, ferr := c.MultipartForm(); ferr == nil && len(form.File["images"]) > 0 {
-		imageURLs, ok := saveUploadedImages(c, "images", h.uploadDir, h.baseURL, dto.MaxBookingImages)
+		imageURLs, ok := saveUploadedImages(c, "images", h.uploadDir, dto.MaxBookingImages)
 		if !ok {
 			return
 		}

@@ -22,13 +22,16 @@ type BookingService struct {
 	partners     repository.PartnerRepository
 	ratings      repository.RatingRepository
 	slotDuration time.Duration
+	baseURL      string
 	now          func() time.Time
 	id           func() string
 }
 
 // NewBookingService creates a BookingService. slotDuration must match the value
 // used to build a partner's available slots so requested slots can be validated.
-func NewBookingService(repo repository.BookingRepository, partners repository.PartnerRepository, ratings repository.RatingRepository, slotDuration time.Duration) *BookingService {
+// baseURL is prefixed onto stored relative image paths when returning them to
+// clients.
+func NewBookingService(repo repository.BookingRepository, partners repository.PartnerRepository, ratings repository.RatingRepository, slotDuration time.Duration, baseURL string) *BookingService {
 	if slotDuration <= 0 {
 		slotDuration = 30 * time.Minute
 	}
@@ -37,6 +40,7 @@ func NewBookingService(repo repository.BookingRepository, partners repository.Pa
 		partners:     partners,
 		ratings:      ratings,
 		slotDuration: slotDuration,
+		baseURL:      baseURL,
 		now:          time.Now,
 		id:           func() string { return uuid.NewString() },
 	}
@@ -93,7 +97,7 @@ func (s *BookingService) Create(ctx context.Context, userID string, in dto.Creat
 	}
 
 	booking.Partner = &partner
-	return toBookingResponse(booking), nil
+	return s.toBookingResponse(booking), nil
 }
 
 // GetForUser returns a single booking owned by the user, with its partner
@@ -128,7 +132,7 @@ func (s *BookingService) GetForPartner(ctx context.Context, partnerID, bookingID
 // plus the embedded partner's rating summary and the status history. Not used
 // by list endpoints to avoid an extra query per row.
 func (s *BookingService) bookingDetails(ctx context.Context, booking model.Booking) (dto.BookingResponse, error) {
-	res := toBookingResponse(booking)
+	res := s.toBookingResponse(booking)
 
 	if res.Partner != nil {
 		avg, total, err := s.ratings.Summary(ctx, repository.RatingFilter{
@@ -160,7 +164,7 @@ func (s *BookingService) ListForUser(ctx context.Context, userID string, page, p
 	if err != nil {
 		return dto.PageResult[dto.BookingResponse]{}, err
 	}
-	return toBookingPage(bookings, page, pageSize, total), nil
+	return s.toBookingPage(bookings, page, pageSize, total), nil
 }
 
 // ListForPartner returns a partner's booking requests, optionally filtered by
@@ -178,7 +182,7 @@ func (s *BookingService) ListForPartner(ctx context.Context, partnerID, status s
 	if err != nil {
 		return dto.PageResult[dto.BookingResponse]{}, err
 	}
-	return toBookingPage(bookings, page, pageSize, total), nil
+	return s.toBookingPage(bookings, page, pageSize, total), nil
 }
 
 // Accept marks a partner's pending booking as accepted, disabling that slot.
@@ -187,7 +191,7 @@ func (s *BookingService) Accept(ctx context.Context, partnerID, bookingID string
 	if err != nil {
 		return dto.BookingResponse{}, err
 	}
-	return toBookingResponse(booking), nil
+	return s.toBookingResponse(booking), nil
 }
 
 // Reject marks a partner's pending booking as rejected.
@@ -196,7 +200,7 @@ func (s *BookingService) Reject(ctx context.Context, partnerID, bookingID string
 	if err != nil {
 		return dto.BookingResponse{}, err
 	}
-	return toBookingResponse(booking), nil
+	return s.toBookingResponse(booking), nil
 }
 
 // Update validates the request and updates a user's pending booking's slot
@@ -240,7 +244,7 @@ func (s *BookingService) Update(ctx context.Context, userID, bookingID string, i
 	if err != nil {
 		return dto.BookingResponse{}, err
 	}
-	return toBookingResponse(updated), nil
+	return s.toBookingResponse(updated), nil
 }
 
 // Cancel marks a user's pending or accepted booking as cancelled.
@@ -249,7 +253,7 @@ func (s *BookingService) Cancel(ctx context.Context, userID, bookingID string) (
 	if err != nil {
 		return dto.BookingResponse{}, err
 	}
-	return toBookingResponse(booking), nil
+	return s.toBookingResponse(booking), nil
 }
 
 // OutForPickup marks a partner's accepted booking as out for pickup.
@@ -258,7 +262,7 @@ func (s *BookingService) OutForPickup(ctx context.Context, partnerID, bookingID 
 	if err != nil {
 		return dto.BookingResponse{}, err
 	}
-	return toBookingResponse(booking), nil
+	return s.toBookingResponse(booking), nil
 }
 
 // Complete marks a partner's out-for-pickup booking as completed.
@@ -267,7 +271,7 @@ func (s *BookingService) Complete(ctx context.Context, partnerID, bookingID stri
 	if err != nil {
 		return dto.BookingResponse{}, err
 	}
-	return toBookingResponse(booking), nil
+	return s.toBookingResponse(booking), nil
 }
 
 func (s *BookingService) listStatusLogs(ctx context.Context, bookingID string) ([]dto.BookingStatusLogResponse, error) {
@@ -343,10 +347,10 @@ func parseBookingStatus(status string) (model.BookingStatus, error) {
 	}
 }
 
-func toBookingPage(bookings []model.Booking, page, pageSize int, total int64) dto.PageResult[dto.BookingResponse] {
+func (s *BookingService) toBookingPage(bookings []model.Booking, page, pageSize int, total int64) dto.PageResult[dto.BookingResponse] {
 	out := make([]dto.BookingResponse, 0, len(bookings))
 	for _, b := range bookings {
-		out = append(out, toBookingResponse(b))
+		out = append(out, s.toBookingResponse(b))
 	}
 	return dto.PageResult[dto.BookingResponse]{
 		Data:       out,
@@ -354,10 +358,10 @@ func toBookingPage(bookings []model.Booking, page, pageSize int, total int64) dt
 	}
 }
 
-func toBookingResponse(b model.Booking) dto.BookingResponse {
+func (s *BookingService) toBookingResponse(b model.Booking) dto.BookingResponse {
 	images := make([]string, 0, len(b.Images))
 	for _, img := range b.Images {
-		images = append(images, img.URL)
+		images = append(images, resolveImageURL(s.baseURL, img.URL))
 	}
 	res := dto.BookingResponse{
 		ID:              b.ID,

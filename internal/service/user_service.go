@@ -32,25 +32,40 @@ const otpLength = 6
 
 // UserService contains user registration and verification logic.
 type UserService struct {
-	repo   repository.UserRepository
-	mailer mailer.Mailer
-	now    func() time.Time
-	id     func() string
-	token  func() (string, error)
-	otp    func() (string, error)
+	repo    repository.UserRepository
+	mailer  mailer.Mailer
+	baseURL string
+	now     func() time.Time
+	id      func() string
+	token   func() (string, error)
+	otp     func() (string, error)
 }
 
 // NewUserService creates a UserService. devOTP, when non-empty, is used as a
-// fixed verification OTP instead of a random one (development only).
-func NewUserService(repo repository.UserRepository, m mailer.Mailer, devOTP string) *UserService {
+// fixed verification OTP instead of a random one (development only). baseURL
+// is prefixed onto stored relative image paths (e.g. profile images) when
+// returning them to clients.
+func NewUserService(repo repository.UserRepository, m mailer.Mailer, devOTP, baseURL string) *UserService {
 	return &UserService{
-		repo:   repo,
-		mailer: m,
-		now:    time.Now,
-		id:     func() string { return uuid.NewString() },
-		token:  randomToken,
-		otp:    newOTPFunc(devOTP),
+		repo:    repo,
+		mailer:  m,
+		baseURL: baseURL,
+		now:     time.Now,
+		id:      func() string { return uuid.NewString() },
+		token:   randomToken,
+		otp:     newOTPFunc(devOTP),
 	}
+}
+
+// resolveImageURL converts a stored image path into an absolute URL using the
+// given base URL. Values that are already absolute (legacy data stored before
+// this resolution moved to response time) are returned unchanged, so a change
+// to the configured base URL doesn't need a data migration to take effect.
+func resolveImageURL(baseURL, path string) string {
+	if path == "" || strings.HasPrefix(path, "http://") || strings.HasPrefix(path, "https://") {
+		return path
+	}
+	return baseURL + path
 }
 
 // Register validates the input, persists the user with addresses, and sends a
@@ -136,7 +151,11 @@ func (s *UserService) Register(ctx context.Context, in dto.RegisterRequest) (mod
 
 // GetProfile returns the user with the given id.
 func (s *UserService) GetProfile(ctx context.Context, id string) (model.User, error) {
-	return s.repo.GetByID(ctx, id)
+	user, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return model.User{}, err
+	}
+	return s.withResolvedImage(user), nil
 }
 
 // UpdateProfile validates and persists the editable profile fields, updating
@@ -164,7 +183,7 @@ func (s *UserService) UpdateProfile(ctx context.Context, id string, in dto.Updat
 	setIfChanged(fields, "mobile_no", strings.TrimSpace(in.MobileNo), current.MobileNo)
 
 	if len(fields) == 0 && in.Address == nil {
-		return current, nil
+		return s.withResolvedImage(current), nil
 	}
 
 	if len(fields) > 0 {
@@ -181,7 +200,11 @@ func (s *UserService) UpdateProfile(ctx context.Context, id string, in dto.Updat
 		}
 	}
 
-	return s.repo.GetByID(ctx, id)
+	updated, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return model.User{}, err
+	}
+	return s.withResolvedImage(updated), nil
 }
 
 // buildAddress builds a user-owned address model from the request input.
@@ -205,7 +228,7 @@ func (s *UserService) buildAddress(userID string, in dto.AddressRequest) model.A
 	}
 }
 
-// SetProfileImage persists the profile image URL for the user.
+// SetProfileImage persists the profile image path for the user.
 func (s *UserService) SetProfileImage(ctx context.Context, id, imageURL string) (model.User, error) {
 	fields := map[string]any{
 		"profile_image": imageURL,
@@ -214,7 +237,17 @@ func (s *UserService) SetProfileImage(ctx context.Context, id, imageURL string) 
 	if err := s.repo.UpdateProfile(ctx, id, fields); err != nil {
 		return model.User{}, err
 	}
-	return s.repo.GetByID(ctx, id)
+	user, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return model.User{}, err
+	}
+	return s.withResolvedImage(user), nil
+}
+
+// withResolvedImage returns u with ProfileImage rewritten to an absolute URL.
+func (s *UserService) withResolvedImage(u model.User) model.User {
+	u.ProfileImage = resolveImageURL(s.baseURL, u.ProfileImage)
+	return u
 }
 
 // VerifyEmail confirms the OTP sent to the user's email and marks the account

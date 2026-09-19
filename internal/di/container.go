@@ -80,11 +80,11 @@ func buildRepositories(db *gorm.DB) Repositories {
 
 func buildServices(cfg config.Config, repos Repositories, mail mailer.Mailer, tokens *auth.TokenService) Services {
 	return Services{
-		User:    service.NewUserService(repos.User, mail, cfg.DevOTP),
-		Partner: service.NewPartnerService(repos.Partner, repos.Rating, mail, cfg.SlotDuration, cfg.DevOTP),
+		User:    service.NewUserService(repos.User, mail, cfg.DevOTP, cfg.AppBaseURL),
+		Partner: service.NewPartnerService(repos.Partner, repos.Rating, mail, cfg.SlotDuration, cfg.DevOTP, cfg.AppBaseURL),
 		Address: service.NewAddressService(repos.Address),
 		Rating:  service.NewRatingService(repos.Rating),
-		Booking: service.NewBookingService(repos.Booking, repos.Partner, repos.Rating, cfg.SlotDuration),
+		Booking: service.NewBookingService(repos.Booking, repos.Partner, repos.Rating, cfg.SlotDuration, cfg.AppBaseURL),
 		Auth:    service.NewAuthService(repos.User, repos.Partner, tokens),
 	}
 }
@@ -96,7 +96,7 @@ func buildHandlers(cfg config.Config, services Services) Handlers {
 		Partner: handler.NewPartnerHandler(services.Partner, services.Auth),
 		Address: handler.NewAddressHandler(services.Address),
 		Rating:  handler.NewRatingHandler(services.Rating),
-		Booking: handler.NewBookingHandler(services.Booking, cfg.UploadDir, cfg.AppBaseURL),
-		Profile: handler.NewProfileHandler(services.User, services.Partner, cfg.UploadDir, cfg.AppBaseURL),
+		Booking: handler.NewBookingHandler(services.Booking, cfg.UploadDir),
+		Profile: handler.NewProfileHandler(services.User, services.Partner, cfg.UploadDir),
 	}
 }
