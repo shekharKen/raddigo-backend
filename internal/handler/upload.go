@@ -16,7 +16,7 @@ const maxUploadImageSize = 5 << 20
 
 // uploadImageTypes maps accepted (sniffed) content types to a file extension.
 var uploadImageTypes = map[string]string{
-	"image/jpeg": ".jpg",
+	"image/jpeg": ".jpeg",
 	"image/png":  ".png",
 	"image/gif":  ".gif",
 	"image/webp": ".webp",
