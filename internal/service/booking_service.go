@@ -575,6 +575,7 @@ func (s *BookingService) toBookingResponse(b model.Booking) dto.BookingResponse 
 			LastName:        b.User.LastName,
 			MobileExtension: b.User.MobileExtension,
 			MobileNo:        b.User.MobileNo,
+			ProfileImage:    resolveImageURL(s.baseURL, b.User.ProfileImage),
 		}
 	}
 	if b.Partner != nil {
@@ -585,6 +586,7 @@ func (s *BookingService) toBookingResponse(b model.Booking) dto.BookingResponse 
 			StoreName:       b.Partner.StoreName,
 			MobileExtension: b.Partner.MobileExtension,
 			MobileNo:        b.Partner.MobileNo,
+			ProfileImage:    resolveImageURL(s.baseURL, b.Partner.ProfileImage),
 		}
 	}
 	return res

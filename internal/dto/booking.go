@@ -79,6 +79,7 @@ type BookingUser struct {
 	LastName        string `json:"last_name"`
 	MobileExtension string `json:"mobile_extension"`
 	MobileNo        string `json:"mobile_no"`
+	ProfileImage    string `json:"profile_image"`
 }
 
 // BookingPartner is the limited set of partner details exposed to a user on a
@@ -90,6 +91,7 @@ type BookingPartner struct {
 	StoreName       string  `json:"store_name"`
 	MobileExtension string  `json:"mobile_extension"`
 	MobileNo        string  `json:"mobile_no"`
+	ProfileImage    string  `json:"profile_image"`
 	AverageRating   float64 `json:"average_rating"`
 	TotalRatings    int64   `json:"total_ratings"`
 }
