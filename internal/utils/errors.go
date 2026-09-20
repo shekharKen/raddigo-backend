@@ -14,6 +14,7 @@ var (
 	ErrNotVerified        = errors.New("account not verified")
 	ErrSlotUnavailable    = errors.New("slot is no longer available")
 	ErrInvalidState       = errors.New("action not allowed in the current state")
+	ErrOTPNotVerified     = errors.New("completion otp must be verified before completing this booking")
 )
 
 // ValidationError carries a human-readable message for a failed validation

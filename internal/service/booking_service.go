@@ -9,11 +9,16 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/raddigo/raddigo/internal/dto"
+	"github.com/raddigo/raddigo/internal/mailer"
 	"github.com/raddigo/raddigo/internal/model"
 	"github.com/raddigo/raddigo/internal/repository"
 	"github.com/raddigo/raddigo/internal/utils"
 	"github.com/raddigo/raddigo/internal/validation"
 )
+
+// bookingOTPTTL is how long a booking completion OTP remains valid once the
+// partner accepts the booking.
+const bookingOTPTTL = 2 * time.Hour
 
 // BookingService contains slot-booking logic: users request a partner's slot
 // and partners accept or reject the request.
@@ -21,17 +26,20 @@ type BookingService struct {
 	repo         repository.BookingRepository
 	partners     repository.PartnerRepository
 	ratings      repository.RatingRepository
+	mailer       mailer.Mailer
 	slotDuration time.Duration
 	baseURL      string
 	now          func() time.Time
 	id           func() string
+	otp          func() (string, error)
 }
 
 // NewBookingService creates a BookingService. slotDuration must match the value
 // used to build a partner's available slots so requested slots can be validated.
 // baseURL is prefixed onto stored relative image paths when returning them to
-// clients.
-func NewBookingService(repo repository.BookingRepository, partners repository.PartnerRepository, ratings repository.RatingRepository, slotDuration time.Duration, baseURL string) *BookingService {
+// clients. devOTP, when non-empty, is used as a fixed completion OTP instead of
+// a random one (development only).
+func NewBookingService(repo repository.BookingRepository, partners repository.PartnerRepository, ratings repository.RatingRepository, slotDuration time.Duration, baseURL string, m mailer.Mailer, devOTP string) *BookingService {
 	if slotDuration <= 0 {
 		slotDuration = 30 * time.Minute
 	}
@@ -39,10 +47,12 @@ func NewBookingService(repo repository.BookingRepository, partners repository.Pa
 		repo:         repo,
 		partners:     partners,
 		ratings:      ratings,
+		mailer:       m,
 		slotDuration: slotDuration,
 		baseURL:      baseURL,
 		now:          time.Now,
 		id:           func() string { return uuid.NewString() },
+		otp:          newOTPFunc(devOTP),
 	}
 }
 
@@ -185,11 +195,25 @@ func (s *BookingService) ListForPartner(ctx context.Context, partnerID, status s
 	return s.toBookingPage(bookings, page, pageSize, total), nil
 }
 
-// Accept marks a partner's pending booking as accepted, disabling that slot.
+// Accept marks a partner's pending booking as accepted, disabling that slot,
+// and generates and emails a completion OTP to the customer for the partner
+// to read back later, confirming the handoff before the booking can be
+// completed.
 func (s *BookingService) Accept(ctx context.Context, partnerID, bookingID string) (dto.BookingResponse, error) {
-	booking, err := s.repo.Accept(ctx, bookingID, partnerID)
+	otp, err := s.otp()
 	if err != nil {
 		return dto.BookingResponse{}, err
+	}
+
+	booking, err := s.repo.Accept(ctx, bookingID, partnerID, otp, s.now().Add(bookingOTPTTL))
+	if err != nil {
+		return dto.BookingResponse{}, err
+	}
+
+	if booking.User != nil && booking.User.Email != "" {
+		if err := s.mailer.SendBookingOTP(ctx, booking.User.Email, otp); err != nil {
+			return dto.BookingResponse{}, err
+		}
 	}
 	return s.toBookingResponse(booking), nil
 }
@@ -256,18 +280,46 @@ func (s *BookingService) Cancel(ctx context.Context, userID, bookingID string) (
 	return s.toBookingResponse(booking), nil
 }
 
-// OutForPickup marks a partner's accepted booking as out for pickup.
-func (s *BookingService) OutForPickup(ctx context.Context, partnerID, bookingID string) (dto.BookingResponse, error) {
-	booking, err := s.repo.OutForPickup(ctx, bookingID, partnerID)
+// VerifyOTP confirms the completion OTP a partner reads back from the
+// customer for an accepted booking. It must succeed before Complete will
+// accept the booking's completion details.
+func (s *BookingService) VerifyOTP(ctx context.Context, partnerID, bookingID string, in dto.VerifyBookingOTPRequest) (dto.BookingResponse, error) {
+	if err := validation.ValidateVerifyBookingOTP(in); err != nil {
+		return dto.BookingResponse{}, err
+	}
+	booking, err := s.repo.VerifyOTP(ctx, bookingID, partnerID, strings.TrimSpace(in.OTP), s.now())
 	if err != nil {
 		return dto.BookingResponse{}, err
 	}
 	return s.toBookingResponse(booking), nil
 }
 
-// Complete marks a partner's out-for-pickup booking as completed.
-func (s *BookingService) Complete(ctx context.Context, partnerID, bookingID string) (dto.BookingResponse, error) {
-	booking, err := s.repo.Complete(ctx, bookingID, partnerID)
+// Complete validates the submitted completion details (scrap images, weight
+// and amount paid) and marks a partner's accepted booking as completed. The
+// booking's completion OTP must have already been verified via VerifyOTP.
+func (s *BookingService) Complete(ctx context.Context, partnerID, bookingID string, in dto.CompleteBookingRequest) (dto.BookingResponse, error) {
+	if err := validation.ValidateCompleteBooking(in); err != nil {
+		return dto.BookingResponse{}, err
+	}
+
+	now := s.now()
+	images := make([]model.BookingCompletionImage, 0, len(in.Images))
+	for i, url := range in.Images {
+		images = append(images, model.BookingCompletionImage{
+			ID:        s.id(),
+			BookingID: bookingID,
+			Sequence:  i,
+			URL:       url,
+			CreatedAt: now,
+		})
+	}
+
+	booking, err := s.repo.Complete(ctx, bookingID, partnerID, repository.BookingCompleteInput{
+		WeightKg:    in.WeightKg,
+		WeightGrams: in.WeightGrams,
+		AmountPaid:  in.AmountPaid,
+		Images:      images,
+	})
 	if err != nil {
 		return dto.BookingResponse{}, err
 	}
@@ -338,12 +390,10 @@ func parseBookingStatus(status string) (model.BookingStatus, error) {
 		return model.BookingRejected, nil
 	case string(model.BookingCancelled):
 		return model.BookingCancelled, nil
-	case string(model.BookingOutForPickup):
-		return model.BookingOutForPickup, nil
 	case string(model.BookingCompleted):
 		return model.BookingCompleted, nil
 	default:
-		return "", utils.NewValidationError("status is invalid: must be one of pending, accepted, rejected, cancelled, out_for_pickup or completed")
+		return "", utils.NewValidationError("status is invalid: must be one of pending, accepted, rejected, cancelled or completed")
 	}
 }
 
@@ -363,6 +413,10 @@ func (s *BookingService) toBookingResponse(b model.Booking) dto.BookingResponse 
 	for _, img := range b.Images {
 		images = append(images, resolveImageURL(s.baseURL, img.URL))
 	}
+	completionImages := make([]string, 0, len(b.CompletionImages))
+	for _, img := range b.CompletionImages {
+		completionImages = append(completionImages, resolveImageURL(s.baseURL, img.URL))
+	}
 	res := dto.BookingResponse{
 		ID:              b.ID,
 		Status:          string(b.Status),
@@ -375,8 +429,15 @@ func (s *BookingService) toBookingResponse(b model.Booking) dto.BookingResponse 
 		Images:          images,
 		Description:     b.Description,
 		Note:            b.Note,
+		OTPVerified:     b.OTPVerifiedAt != nil,
+		WeightKg:        b.WeightKg,
+		WeightGrams:     b.WeightGrams,
+		AmountPaid:      b.AmountPaid,
 		CreatedAt:       b.CreatedAt,
 		UpdatedAt:       b.UpdatedAt,
+	}
+	if len(completionImages) > 0 {
+		res.CompletionImages = completionImages
 	}
 	if b.User != nil {
 		res.User = &dto.BookingUser{

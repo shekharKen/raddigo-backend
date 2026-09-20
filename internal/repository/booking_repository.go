@@ -23,13 +23,22 @@ type BookingRepository interface {
 	ListByUser(ctx context.Context, userID string, limit, offset int) ([]model.Booking, int64, error)
 	ListByPartner(ctx context.Context, partnerID string, status model.BookingStatus, limit, offset int) ([]model.Booking, int64, error)
 	SlotAccepted(ctx context.Context, partnerID, slotDate, slotStartTime string) (bool, error)
-	Accept(ctx context.Context, bookingID, partnerID string) (model.Booking, error)
+	Accept(ctx context.Context, bookingID, partnerID, otp string, otpExpiry time.Time) (model.Booking, error)
 	Reject(ctx context.Context, bookingID, partnerID string) (model.Booking, error)
 	Update(ctx context.Context, bookingID, userID string, in BookingUpdateInput) (model.Booking, error)
 	Cancel(ctx context.Context, bookingID, userID string) (model.Booking, error)
-	OutForPickup(ctx context.Context, bookingID, partnerID string) (model.Booking, error)
-	Complete(ctx context.Context, bookingID, partnerID string) (model.Booking, error)
+	VerifyOTP(ctx context.Context, bookingID, partnerID, otp string, now time.Time) (model.Booking, error)
+	Complete(ctx context.Context, bookingID, partnerID string, in BookingCompleteInput) (model.Booking, error)
 	ListStatusLogs(ctx context.Context, bookingID string) ([]model.BookingStatusLog, error)
+}
+
+// BookingCompleteInput carries the completion details a partner submits to
+// finish an accepted booking.
+type BookingCompleteInput struct {
+	WeightKg    int
+	WeightGrams int
+	AmountPaid  float64
+	Images      []model.BookingCompletionImage
 }
 
 // BookingUpdateInput carries the mutable fields of a booking update. A nil
@@ -177,12 +186,14 @@ func (r *GormBookingRepository) SlotAccepted(ctx context.Context, partnerID, slo
 	return count > 0, nil
 }
 
-// Accept transitions a pending booking to accepted and rejects any other
-// pending bookings competing for the same slot, all within a transaction. It
-// returns utils.ErrNotFound when the booking does not belong to the partner,
-// utils.ErrInvalidState when it is not pending, and utils.ErrSlotUnavailable
-// when the slot has already been taken.
-func (r *GormBookingRepository) Accept(ctx context.Context, bookingID, partnerID string) (model.Booking, error) {
+// Accept transitions a pending booking to accepted, stores a freshly
+// generated completion OTP (with expiry) for the caller to send to the
+// customer, and rejects any other pending bookings competing for the same
+// slot, all within a transaction. It returns utils.ErrNotFound when the
+// booking does not belong to the partner, utils.ErrInvalidState when it is
+// not pending, and utils.ErrSlotUnavailable when the slot has already been
+// taken.
+func (r *GormBookingRepository) Accept(ctx context.Context, bookingID, partnerID, otp string, otpExpiry time.Time) (model.Booking, error) {
 	var accepted model.Booking
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var booking model.Booking
@@ -209,9 +220,15 @@ func (r *GormBookingRepository) Accept(ctx context.Context, bookingID, partnerID
 			return utils.ErrSlotUnavailable
 		}
 
+		fields := map[string]interface{}{
+			"status":                model.BookingAccepted,
+			"completion_otp":        otp,
+			"completion_otp_expiry": otpExpiry,
+			"otp_verified_at":       nil,
+		}
 		if err := tx.Model(&model.Booking{}).
 			Where("id = ?", booking.ID).
-			Update("status", model.BookingAccepted).Error; err != nil {
+			Updates(fields).Error; err != nil {
 			return fmt.Errorf("accept booking: %w", err)
 		}
 
@@ -391,10 +408,59 @@ func (r *GormBookingRepository) Cancel(ctx context.Context, bookingID, userID st
 	return cancelled, nil
 }
 
-// OutForPickup transitions an accepted booking to out_for_pickup. It returns
-// utils.ErrNotFound when the booking does not belong to the partner and
-// utils.ErrInvalidState when it is not accepted.
-func (r *GormBookingRepository) OutForPickup(ctx context.Context, bookingID, partnerID string) (model.Booking, error) {
+// VerifyOTP confirms the completion OTP a partner reads back from the
+// customer, marking it verified so the booking can then be completed. It
+// returns utils.ErrNotFound when the booking does not belong to the partner,
+// utils.ErrInvalidState when it is not accepted, and utils.ErrInvalidOTP
+// when the OTP is wrong, missing or expired. Already-verified bookings are a
+// no-op success.
+func (r *GormBookingRepository) VerifyOTP(ctx context.Context, bookingID, partnerID, otp string, now time.Time) (model.Booking, error) {
+	var verified model.Booking
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var booking model.Booking
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("id = ? AND partner_id = ?", bookingID, partnerID).
+			First(&booking).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return utils.ErrNotFound
+			}
+			return fmt.Errorf("load booking: %w", err)
+		}
+		if booking.Status != model.BookingAccepted {
+			return utils.ErrInvalidState
+		}
+		if booking.OTPVerifiedAt == nil {
+			if booking.CompletionOTP == "" || booking.CompletionOTP != otp {
+				return utils.ErrInvalidOTP
+			}
+			if booking.CompletionOTPExpiry.IsZero() || now.After(booking.CompletionOTPExpiry) {
+				return utils.ErrInvalidOTP
+			}
+			if err := tx.Model(&model.Booking{}).
+				Where("id = ?", booking.ID).
+				Update("otp_verified_at", now).Error; err != nil {
+				return fmt.Errorf("verify otp: %w", err)
+			}
+		}
+		if err := tx.Preload("User").Preload("Partner").
+			Preload("Images", func(db *gorm.DB) *gorm.DB { return db.Order("sequence ASC") }).
+			Where("id = ?", booking.ID).First(&verified).Error; err != nil {
+			return fmt.Errorf("reload booking: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return model.Booking{}, err
+	}
+	return verified, nil
+}
+
+// Complete transitions an accepted booking to completed, storing the
+// weight, amount paid and scrap images the partner submits. It returns
+// utils.ErrNotFound when the booking does not belong to the partner,
+// utils.ErrInvalidState when it is not accepted, and
+// utils.ErrOTPNotVerified when the completion OTP hasn't been verified yet.
+func (r *GormBookingRepository) Complete(ctx context.Context, bookingID, partnerID string, in BookingCompleteInput) (model.Booking, error) {
 	var updated model.Booking
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var booking model.Booking
@@ -409,55 +475,31 @@ func (r *GormBookingRepository) OutForPickup(ctx context.Context, bookingID, par
 		if booking.Status != model.BookingAccepted {
 			return utils.ErrInvalidState
 		}
-		if err := tx.Model(&model.Booking{}).
-			Where("id = ?", booking.ID).
-			Update("status", model.BookingOutForPickup).Error; err != nil {
-			return fmt.Errorf("mark out for pickup: %w", err)
+		if booking.OTPVerifiedAt == nil {
+			return utils.ErrOTPNotVerified
 		}
-		if err := insertBookingStatusLog(tx, booking.ID, model.BookingOutForPickup); err != nil {
-			return err
-		}
-		if err := tx.Preload("User").Preload("Partner").
-			Preload("Images", func(db *gorm.DB) *gorm.DB { return db.Order("sequence ASC") }).
-			Where("id = ?", booking.ID).First(&updated).Error; err != nil {
-			return fmt.Errorf("reload booking: %w", err)
-		}
-		return nil
-	})
-	if err != nil {
-		return model.Booking{}, err
-	}
-	return updated, nil
-}
-
-// Complete transitions an out-for-pickup booking to completed. It returns
-// utils.ErrNotFound when the booking does not belong to the partner and
-// utils.ErrInvalidState when it is not out for pickup.
-func (r *GormBookingRepository) Complete(ctx context.Context, bookingID, partnerID string) (model.Booking, error) {
-	var updated model.Booking
-	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		var booking model.Booking
-		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
-			Where("id = ? AND partner_id = ?", bookingID, partnerID).
-			First(&booking).Error; err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				return utils.ErrNotFound
-			}
-			return fmt.Errorf("load booking: %w", err)
-		}
-		if booking.Status != model.BookingOutForPickup {
-			return utils.ErrInvalidState
+		fields := map[string]interface{}{
+			"status":       model.BookingCompleted,
+			"weight_kg":    in.WeightKg,
+			"weight_grams": in.WeightGrams,
+			"amount_paid":  in.AmountPaid,
 		}
 		if err := tx.Model(&model.Booking{}).
 			Where("id = ?", booking.ID).
-			Update("status", model.BookingCompleted).Error; err != nil {
+			Updates(fields).Error; err != nil {
 			return fmt.Errorf("complete booking: %w", err)
+		}
+		if len(in.Images) > 0 {
+			if err := tx.Create(&in.Images).Error; err != nil {
+				return fmt.Errorf("create completion images: %w", err)
+			}
 		}
 		if err := insertBookingStatusLog(tx, booking.ID, model.BookingCompleted); err != nil {
 			return err
 		}
 		if err := tx.Preload("User").Preload("Partner").
 			Preload("Images", func(db *gorm.DB) *gorm.DB { return db.Order("sequence ASC") }).
+			Preload("CompletionImages", func(db *gorm.DB) *gorm.DB { return db.Order("sequence ASC") }).
 			Where("id = ?", booking.ID).First(&updated).Error; err != nil {
 			return fmt.Errorf("reload booking: %w", err)
 		}

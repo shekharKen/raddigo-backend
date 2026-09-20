@@ -9,6 +9,7 @@ import (
 type Mailer interface {
 	SendVerificationEmail(ctx context.Context, to, otp string) error
 	SendPasswordResetEmail(ctx context.Context, to, otp string) error
+	SendBookingOTP(ctx context.Context, to, otp string) error
 }
 
 // LogMailer is a development Mailer that logs emails instead of sending them.
@@ -33,6 +34,15 @@ func (m *LogMailer) SendVerificationEmail(_ context.Context, to, otp string) err
 // SendPasswordResetEmail logs the password reset OTP for the recipient.
 func (m *LogMailer) SendPasswordResetEmail(_ context.Context, to, otp string) error {
 	m.logger.Info("password reset email",
+		"to", to,
+		"otp", otp,
+	)
+	return nil
+}
+
+// SendBookingOTP logs the booking completion OTP for the recipient.
+func (m *LogMailer) SendBookingOTP(_ context.Context, to, otp string) error {
+	m.logger.Info("booking completion otp email",
 		"to", to,
 		"otp", otp,
 	)

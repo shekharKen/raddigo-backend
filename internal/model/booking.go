@@ -6,12 +6,11 @@ import "time"
 type BookingStatus string
 
 const (
-	BookingPending      BookingStatus = "pending"
-	BookingAccepted     BookingStatus = "accepted"
-	BookingRejected     BookingStatus = "rejected"
-	BookingCancelled    BookingStatus = "cancelled"
-	BookingOutForPickup BookingStatus = "out_for_pickup"
-	BookingCompleted    BookingStatus = "completed"
+	BookingPending   BookingStatus = "pending"
+	BookingAccepted  BookingStatus = "accepted"
+	BookingRejected  BookingStatus = "rejected"
+	BookingCancelled BookingStatus = "cancelled"
+	BookingCompleted BookingStatus = "completed"
 )
 
 // Booking is a user's request to book a partner's time slot for a scrap pickup.
@@ -34,8 +33,34 @@ type Booking struct {
 	Note            string         `json:"note"`
 	User            *User          `json:"user,omitempty" gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE"`
 	Partner         *Partner       `json:"partner,omitempty" gorm:"foreignKey:PartnerID;constraint:OnDelete:CASCADE"`
-	CreatedAt       time.Time      `json:"created_at"`
-	UpdatedAt       time.Time      `json:"updated_at"`
+
+	// Completion OTP: generated and sent to the user when the partner accepts
+	// the booking, then read back by the partner to confirm they are handing
+	// off to the right customer before the booking can be completed.
+	CompletionOTP       string     `json:"-" gorm:"type:varchar(10)"`
+	CompletionOTPExpiry time.Time  `json:"-"`
+	OTPVerifiedAt       *time.Time `json:"-"`
+
+	// Completion details, filled in by the partner (alongside OTP verification)
+	// once the scrap has been collected and weighed.
+	WeightKg         *int                     `json:"weight_kg,omitempty"`
+	WeightGrams      *int                     `json:"weight_grams,omitempty"`
+	AmountPaid       *float64                 `json:"amount_paid,omitempty"`
+	CompletionImages []BookingCompletionImage `json:"completion_images,omitempty" gorm:"foreignKey:BookingID;constraint:OnDelete:CASCADE"`
+
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// BookingCompletionImage is a single ordered scrap image the partner attaches
+// when completing a booking (e.g. photos of the weighed scrap), distinct from
+// the customer-submitted BookingImage taken at booking time.
+type BookingCompletionImage struct {
+	ID        string    `json:"id" gorm:"type:uuid;primaryKey"`
+	BookingID string    `json:"booking_id" gorm:"type:uuid;not null;index"`
+	Sequence  int       `json:"sequence" gorm:"not null"`
+	URL       string    `json:"url" gorm:"not null"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 // BookingImage is a single ordered scrap image attached to a Booking. The
@@ -49,8 +74,7 @@ type BookingImage struct {
 }
 
 // BookingStatusLog records a single status transition of a Booking, forming
-// an append-only audit trail (created, accepted/rejected, out for pickup,
-// completed, cancelled).
+// an append-only audit trail (created, accepted/rejected, completed, cancelled).
 type BookingStatusLog struct {
 	ID        string        `json:"id" gorm:"type:uuid;primaryKey"`
 	BookingID string        `json:"booking_id" gorm:"type:uuid;not null;index"`

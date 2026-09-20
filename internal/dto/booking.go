@@ -5,6 +5,10 @@ import "time"
 // MaxBookingImages caps the number of scrap images accepted per booking.
 const MaxBookingImages = 5
 
+// MaxCompletionImages caps the number of scrap images the partner attaches
+// when completing a booking.
+const MaxCompletionImages = 5
+
 // CreateBookingRequest is the payload accepted when a user books a partner's
 // slot. It is submitted as multipart/form-data so the scrap images can be sent
 // alongside the booking details; ScrapImages is populated by the handler after
@@ -36,6 +40,23 @@ type UpdateBookingRequest struct {
 	Description     string   `json:"description"`
 	Note            string   `json:"note"`
 	ScrapImages     []string `json:"-"`
+}
+
+// VerifyBookingOTPRequest carries the OTP a partner reads back from the
+// customer to confirm the handoff before completing a booking.
+type VerifyBookingOTPRequest struct {
+	OTP string `json:"otp"`
+}
+
+// CompleteBookingRequest is the payload accepted when a partner completes an
+// accepted booking. It is submitted as multipart/form-data so the
+// completion scrap images can be sent alongside the weight and amount paid;
+// Images is populated by the handler after the uploaded files are stored.
+type CompleteBookingRequest struct {
+	WeightKg    int      `json:"weight_kg"`
+	WeightGrams int      `json:"weight_grams"`
+	AmountPaid  float64  `json:"amount_paid"`
+	Images      []string `json:"-"`
 }
 
 // BookingUser is the limited set of user details exposed to a partner on a
@@ -76,8 +97,15 @@ type BookingResponse struct {
 	Note            string          `json:"note"`
 	User            *BookingUser    `json:"user,omitempty"`
 	Partner         *BookingPartner `json:"partner,omitempty"`
-	CreatedAt       time.Time       `json:"created_at"`
-	UpdatedAt       time.Time       `json:"updated_at"`
+	// OTPVerified reports whether the completion OTP has been confirmed by the
+	// partner; required before the booking can be completed.
+	OTPVerified      bool      `json:"otp_verified"`
+	WeightKg         *int      `json:"weight_kg,omitempty"`
+	WeightGrams      *int      `json:"weight_grams,omitempty"`
+	AmountPaid       *float64  `json:"amount_paid,omitempty"`
+	CompletionImages []string  `json:"completion_images,omitempty"`
+	CreatedAt        time.Time `json:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at"`
 	// StatusLogs is only populated on the single-booking "get" endpoints.
 	StatusLogs []BookingStatusLogResponse `json:"status_logs,omitempty"`
 }

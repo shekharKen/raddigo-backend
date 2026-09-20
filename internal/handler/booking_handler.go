@@ -24,8 +24,8 @@ type bookingService interface {
 	Reject(ctx context.Context, partnerID, bookingID string) (dto.BookingResponse, error)
 	Update(ctx context.Context, userID, bookingID string, in dto.UpdateBookingRequest) (dto.BookingResponse, error)
 	Cancel(ctx context.Context, userID, bookingID string) (dto.BookingResponse, error)
-	OutForPickup(ctx context.Context, partnerID, bookingID string) (dto.BookingResponse, error)
-	Complete(ctx context.Context, partnerID, bookingID string) (dto.BookingResponse, error)
+	VerifyOTP(ctx context.Context, partnerID, bookingID string, in dto.VerifyBookingOTPRequest) (dto.BookingResponse, error)
+	Complete(ctx context.Context, partnerID, bookingID string, in dto.CompleteBookingRequest) (dto.BookingResponse, error)
 }
 
 // BookingHandler exposes slot-booking HTTP handlers.
@@ -201,9 +201,18 @@ func (h *BookingHandler) Cancel(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"booking": booking})
 }
 
-// OutForPickup handles POST /api/v1/partner/bookings/:bookingId/out-for-pickup.
-func (h *BookingHandler) OutForPickup(c *gin.Context) {
-	booking, err := h.svc.OutForPickup(c.Request.Context(), c.GetString(middleware.ContextSubjectKey), c.Param("bookingId"))
+// VerifyOTP handles POST /api/v1/partner/bookings/:bookingId/verify-otp. The
+// partner submits the OTP read back from the customer to confirm the handoff;
+// this must succeed before Complete will accept the booking's completion
+// details.
+func (h *BookingHandler) VerifyOTP(c *gin.Context) {
+	var in dto.VerifyBookingOTPRequest
+	if err := c.ShouldBindJSON(&in); err != nil {
+		c.JSON(http.StatusBadRequest, utils.ErrorResponse{Error: "invalid request body"})
+		return
+	}
+
+	booking, err := h.svc.VerifyOTP(c.Request.Context(), c.GetString(middleware.ContextSubjectKey), c.Param("bookingId"), in)
 	if err != nil {
 		h.writeServiceError(c, err)
 		return
@@ -211,9 +220,41 @@ func (h *BookingHandler) OutForPickup(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"booking": booking})
 }
 
-// Complete handles POST /api/v1/partner/bookings/:bookingId/complete.
+// Complete handles POST /api/v1/partner/bookings/:bookingId/complete. It
+// accepts a multipart/form-data body carrying the scrap images collected at
+// pickup (repeated "images" field, at least one required) plus the weighed
+// scrap's weight and the amount paid to the customer. The booking's
+// completion OTP must have already been verified via VerifyOTP.
 func (h *BookingHandler) Complete(c *gin.Context) {
-	booking, err := h.svc.Complete(c.Request.Context(), c.GetString(middleware.ContextSubjectKey), c.Param("bookingId"))
+	weightKg, err := strconv.Atoi(c.PostForm("weight_kg"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, utils.ErrorResponse{Error: "weight_kg is required and must be a whole number"})
+		return
+	}
+	weightGrams, err := strconv.Atoi(c.PostForm("weight_grams"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, utils.ErrorResponse{Error: "weight_grams is required and must be a whole number"})
+		return
+	}
+	amountPaid, err := strconv.ParseFloat(c.PostForm("amount_paid"), 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, utils.ErrorResponse{Error: "amount_paid is required and must be a number"})
+		return
+	}
+
+	imageURLs, ok := saveUploadedImages(c, "images", h.uploadDir, dto.MaxCompletionImages)
+	if !ok {
+		return
+	}
+
+	in := dto.CompleteBookingRequest{
+		WeightKg:    weightKg,
+		WeightGrams: weightGrams,
+		AmountPaid:  amountPaid,
+		Images:      imageURLs,
+	}
+
+	booking, err := h.svc.Complete(c.Request.Context(), c.GetString(middleware.ContextSubjectKey), c.Param("bookingId"), in)
 	if err != nil {
 		h.writeServiceError(c, err)
 		return
@@ -232,6 +273,10 @@ func (h *BookingHandler) writeServiceError(c *gin.Context, err error) {
 		c.JSON(http.StatusConflict, utils.ErrorResponse{Error: "slot is no longer available"})
 	case errors.Is(err, utils.ErrInvalidState):
 		c.JSON(http.StatusConflict, utils.ErrorResponse{Error: "booking is not in a state that allows this action"})
+	case errors.Is(err, utils.ErrOTPNotVerified):
+		c.JSON(http.StatusConflict, utils.ErrorResponse{Error: "completion otp must be verified before completing this booking"})
+	case errors.Is(err, utils.ErrInvalidOTP):
+		c.JSON(http.StatusBadRequest, utils.ErrorResponse{Error: "invalid or expired otp"})
 	default:
 		c.JSON(http.StatusInternalServerError, utils.ErrorResponse{Error: "internal server error"})
 	}

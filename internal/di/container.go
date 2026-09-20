@@ -84,7 +84,7 @@ func buildServices(cfg config.Config, repos Repositories, mail mailer.Mailer, to
 		Partner: service.NewPartnerService(repos.Partner, repos.Rating, mail, cfg.SlotDuration, cfg.DevOTP, cfg.AppBaseURL),
 		Address: service.NewAddressService(repos.Address),
 		Rating:  service.NewRatingService(repos.Rating),
-		Booking: service.NewBookingService(repos.Booking, repos.Partner, repos.Rating, cfg.SlotDuration, cfg.AppBaseURL),
+		Booking: service.NewBookingService(repos.Booking, repos.Partner, repos.Rating, cfg.SlotDuration, cfg.AppBaseURL, mail, cfg.DevOTP),
 		Auth:    service.NewAuthService(repos.User, repos.Partner, tokens),
 	}
 }

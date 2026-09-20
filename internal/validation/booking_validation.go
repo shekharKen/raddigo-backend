@@ -18,6 +18,8 @@ const (
 	maxPickupAddressLength      = 500
 	bookingDateLayout           = "2006-01-02"
 	bookingTimeLayout           = "15:04"
+	maxWeightGrams              = 999
+	maxAmountPaid               = 10_000_000
 )
 
 // ValidateCreateBooking validates a booking request, returning a
@@ -118,6 +120,38 @@ func validateBookingNotes(description, note string) error {
 	}
 	if len(strings.TrimSpace(note)) > maxBookingNoteLength {
 		return utils.NewValidationError(fmt.Sprintf("note is too long: up to %d characters", maxBookingNoteLength))
+	}
+	return nil
+}
+
+// ValidateVerifyBookingOTP validates a booking completion OTP submission.
+func ValidateVerifyBookingOTP(in dto.VerifyBookingOTPRequest) error {
+	if !otpRe.MatchString(strings.TrimSpace(in.OTP)) {
+		return utils.NewValidationError("otp is invalid: expected a 6-digit code")
+	}
+	return nil
+}
+
+// ValidateCompleteBooking validates the completion details a partner submits
+// (scrap images, weight and amount paid) to complete an accepted booking.
+func ValidateCompleteBooking(in dto.CompleteBookingRequest) error {
+	if len(in.Images) == 0 {
+		return utils.NewValidationError("at least one scrap image is required")
+	}
+	if len(in.Images) > dto.MaxCompletionImages {
+		return utils.NewValidationError(fmt.Sprintf("too many images: up to %d allowed", dto.MaxCompletionImages))
+	}
+	if in.WeightKg < 0 {
+		return utils.NewValidationError("weight_kg is invalid: must not be negative")
+	}
+	if in.WeightGrams < 0 || in.WeightGrams > maxWeightGrams {
+		return utils.NewValidationError(fmt.Sprintf("weight_grams is invalid: must be between 0 and %d", maxWeightGrams))
+	}
+	if in.WeightKg == 0 && in.WeightGrams == 0 {
+		return utils.NewValidationError("weight is required: weight_kg and weight_grams must not both be zero")
+	}
+	if in.AmountPaid < 0 || in.AmountPaid > maxAmountPaid {
+		return utils.NewValidationError("amount_paid is invalid: must be a non-negative amount")
 	}
 	return nil
 }
