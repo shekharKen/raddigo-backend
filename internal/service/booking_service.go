@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"math"
 	"strings"
 	"time"
@@ -165,7 +166,44 @@ func (s *BookingService) bookingDetails(ctx context.Context, booking model.Booki
 	}
 	res.StatusLogs = logs
 
+	ratings, err := s.bookingRatings(ctx, booking.UserID, booking.PartnerID)
+	if err != nil {
+		return dto.BookingResponse{}, err
+	}
+	res.Ratings = ratings
+
 	return res, nil
+}
+
+// bookingRatings looks up the rating each side has given the other for this
+// user/partner pair, returning nil when neither has rated yet.
+func (s *BookingService) bookingRatings(ctx context.Context, userID, partnerID string) (*dto.BookingRatings, error) {
+	var ratings dto.BookingRatings
+
+	userToPartner, err := s.ratings.GetOne(ctx, repository.RatingFilter{
+		Direction: model.RatingUserToPartner, UserID: userID, PartnerID: partnerID,
+	})
+	if err == nil {
+		res := toRatingResponse(userToPartner)
+		ratings.UserToPartner = &res
+	} else if !errors.Is(err, utils.ErrNotFound) {
+		return nil, err
+	}
+
+	partnerToUser, err := s.ratings.GetOne(ctx, repository.RatingFilter{
+		Direction: model.RatingPartnerToUser, UserID: userID, PartnerID: partnerID,
+	})
+	if err == nil {
+		res := toRatingResponse(partnerToUser)
+		ratings.PartnerToUser = &res
+	} else if !errors.Is(err, utils.ErrNotFound) {
+		return nil, err
+	}
+
+	if ratings.UserToPartner == nil && ratings.PartnerToUser == nil {
+		return nil, nil
+	}
+	return &ratings, nil
 }
 
 // ListForUser returns a user's bookings, optionally filtered by status, each

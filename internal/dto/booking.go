@@ -123,6 +123,18 @@ type BookingResponse struct {
 	UpdatedAt        time.Time `json:"updated_at"`
 	// StatusLogs is only populated on the single-booking "get" endpoints.
 	StatusLogs []BookingStatusLogResponse `json:"status_logs,omitempty"`
+	// Ratings is only populated on the single-booking "get" endpoints. It
+	// reflects the overall rating relationship between this booking's user
+	// and partner (ratings aren't tracked per booking, so the same values
+	// would appear on any other booking shared by this pair).
+	Ratings *BookingRatings `json:"ratings,omitempty"`
+}
+
+// BookingRatings holds the two possible ratings between a booking's user and
+// partner.
+type BookingRatings struct {
+	UserToPartner *RatingResponse `json:"user_to_partner,omitempty"`
+	PartnerToUser *RatingResponse `json:"partner_to_user,omitempty"`
 }
 
 // UserStatsResponse is a customer's aggregate booking figures.

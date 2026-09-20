@@ -2,12 +2,14 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
 	"github.com/raddigo/raddigo/internal/model"
+	"github.com/raddigo/raddigo/internal/utils"
 )
 
 // RatingFilter narrows a rating query by direction and the involved parties.
@@ -36,6 +38,7 @@ type RatingRepository interface {
 	UserExists(ctx context.Context, userID string) (bool, error)
 	PartnerExists(ctx context.Context, partnerID string) (bool, error)
 	Upsert(ctx context.Context, rating *model.Rating) error
+	GetOne(ctx context.Context, f RatingFilter) (model.Rating, error)
 	List(ctx context.Context, f RatingFilter, limit, offset int) ([]model.Rating, int64, error)
 	ListReceivedByPartner(ctx context.Context, partnerID string, limit, offset int) ([]PartnerRatingRow, int64, error)
 	Summary(ctx context.Context, f RatingFilter) (avg float64, total int64, err error)
@@ -88,6 +91,19 @@ func (r *GormRatingRepository) Upsert(ctx context.Context, rating *model.Rating)
 		return fmt.Errorf("upsert rating: %w", err)
 	}
 	return nil
+}
+
+// GetOne returns the single rating matching the filter's direction, user and
+// partner, or utils.ErrNotFound when neither side has rated the other yet.
+func (r *GormRatingRepository) GetOne(ctx context.Context, f RatingFilter) (model.Rating, error) {
+	var rating model.Rating
+	if err := r.scope(f)(r.db.WithContext(ctx)).First(&rating).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return model.Rating{}, utils.ErrNotFound
+		}
+		return model.Rating{}, fmt.Errorf("get rating: %w", err)
+	}
+	return rating, nil
 }
 
 // List returns a paginated set of ratings matching the filter, newest first,
