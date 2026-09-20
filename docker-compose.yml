@@ -21,6 +21,10 @@ services:
     container_name: raddigo-app
     env_file:
       - .env
+    environment:
+      GOOGLE_APPLICATION_CREDENTIALS: /app/raddigo-firebase-adminsdk.json
+    volumes:
+      - ./raddigo-firebase-adminsdk.json:/app/raddigo-firebase-adminsdk.json:ro
     depends_on:
       db:
         condition: service_healthy
