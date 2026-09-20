@@ -29,6 +29,7 @@ type BookingRepository interface {
 	Reject(ctx context.Context, bookingID, partnerID, reason string) (model.Booking, error)
 	Update(ctx context.Context, bookingID, userID string, in BookingUpdateInput) (model.Booking, error)
 	Cancel(ctx context.Context, bookingID, userID, reason string) (model.Booking, error)
+	CancelByPartner(ctx context.Context, bookingID, partnerID, reason string) (model.Booking, error)
 	SendOTP(ctx context.Context, bookingID, partnerID, otp string, otpExpiry time.Time) (model.Booking, error)
 	VerifyOTP(ctx context.Context, bookingID, partnerID, otp string, now time.Time) (model.Booking, error)
 	Complete(ctx context.Context, bookingID, partnerID string, in BookingCompleteInput) (model.Booking, error)
@@ -458,6 +459,46 @@ func (r *GormBookingRepository) Cancel(ctx context.Context, bookingID, userID, r
 			return err
 		}
 		if err := tx.Preload("Partner").
+			Preload("Images", func(db *gorm.DB) *gorm.DB { return db.Order("sequence ASC") }).
+			Where("id = ?", booking.ID).First(&cancelled).Error; err != nil {
+			return fmt.Errorf("reload booking: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return model.Booking{}, err
+	}
+	return cancelled, nil
+}
+
+// CancelByPartner transitions an accepted booking to cancelled on the
+// partner's initiative, optionally recording their reason. It returns
+// utils.ErrNotFound when the booking does not belong to the partner and
+// utils.ErrInvalidState when it is not accepted.
+func (r *GormBookingRepository) CancelByPartner(ctx context.Context, bookingID, partnerID, reason string) (model.Booking, error) {
+	var cancelled model.Booking
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var booking model.Booking
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("id = ? AND partner_id = ?", bookingID, partnerID).
+			First(&booking).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return utils.ErrNotFound
+			}
+			return fmt.Errorf("load booking: %w", err)
+		}
+		if booking.Status != model.BookingAccepted {
+			return utils.ErrInvalidState
+		}
+		if err := tx.Model(&model.Booking{}).
+			Where("id = ?", booking.ID).
+			Updates(map[string]interface{}{"status": model.BookingCancelled, "reason": reasonPtr(reason)}).Error; err != nil {
+			return fmt.Errorf("cancel booking: %w", err)
+		}
+		if err := insertBookingStatusLog(tx, booking.ID, model.BookingCancelled); err != nil {
+			return err
+		}
+		if err := tx.Preload("User").
 			Preload("Images", func(db *gorm.DB) *gorm.DB { return db.Order("sequence ASC") }).
 			Where("id = ?", booking.ID).First(&cancelled).Error; err != nil {
 			return fmt.Errorf("reload booking: %w", err)

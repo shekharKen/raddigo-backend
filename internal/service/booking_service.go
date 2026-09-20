@@ -337,6 +337,17 @@ func (s *BookingService) Cancel(ctx context.Context, userID, bookingID, reason s
 	return s.toBookingResponse(booking), nil
 }
 
+// CancelByPartner marks a partner's accepted booking as cancelled, optionally
+// recording the partner's reason, and notifies the customer.
+func (s *BookingService) CancelByPartner(ctx context.Context, partnerID, bookingID, reason string) (dto.BookingResponse, error) {
+	booking, err := s.repo.CancelByPartner(ctx, bookingID, partnerID, strings.TrimSpace(reason))
+	if err != nil {
+		return dto.BookingResponse{}, err
+	}
+	s.notifications.BookingCancelledByPartner(ctx, booking)
+	return s.toBookingResponse(booking), nil
+}
+
 // SendOTP generates and emails a fresh completion OTP to the customer for an
 // accepted booking, for the partner to read back later via VerifyOTP.
 func (s *BookingService) SendOTP(ctx context.Context, partnerID, bookingID string) (dto.BookingResponse, error) {

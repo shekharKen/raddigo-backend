@@ -27,6 +27,7 @@ type bookingService interface {
 	Reject(ctx context.Context, partnerID, bookingID, reason string) (dto.BookingResponse, error)
 	Update(ctx context.Context, userID, bookingID string, in dto.UpdateBookingRequest) (dto.BookingResponse, error)
 	Cancel(ctx context.Context, userID, bookingID, reason string) (dto.BookingResponse, error)
+	CancelByPartner(ctx context.Context, partnerID, bookingID, reason string) (dto.BookingResponse, error)
 	SendOTP(ctx context.Context, partnerID, bookingID string) (dto.BookingResponse, error)
 	VerifyOTP(ctx context.Context, partnerID, bookingID string, in dto.VerifyBookingOTPRequest) (dto.BookingResponse, error)
 	Complete(ctx context.Context, partnerID, bookingID string, in dto.CompleteBookingRequest) (dto.BookingResponse, error)
@@ -259,6 +260,24 @@ func (h *BookingHandler) Cancel(c *gin.Context) {
 	}
 
 	booking, err := h.svc.Cancel(c.Request.Context(), c.GetString(middleware.ContextSubjectKey), c.Param("bookingId"), in.Reason)
+	if err != nil {
+		h.writeServiceError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"booking": booking})
+}
+
+// CancelForPartner handles POST /api/v1/partner/bookings/:bookingId/cancel.
+// It lets a partner back out of an already-accepted booking. The request
+// body is optional JSON, e.g. {"reason": "..."}.
+func (h *BookingHandler) CancelForPartner(c *gin.Context) {
+	var in dto.CancelBookingRequest
+	if err := c.ShouldBindJSON(&in); err != nil && !errors.Is(err, io.EOF) {
+		c.JSON(http.StatusBadRequest, utils.ErrorResponse{Error: "invalid request body"})
+		return
+	}
+
+	booking, err := h.svc.CancelByPartner(c.Request.Context(), c.GetString(middleware.ContextSubjectKey), c.Param("bookingId"), in.Reason)
 	if err != nil {
 		h.writeServiceError(c, err)
 		return

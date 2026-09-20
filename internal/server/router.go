@@ -110,6 +110,7 @@ func NewRouter(
 			partners.GET("/bookings/:bookingId", middleware.RequirePartnerRole(), booking.GetForPartner)
 			partners.POST("/bookings/:bookingId/accept", middleware.RequirePartnerRole(), booking.Accept)
 			partners.POST("/bookings/:bookingId/reject", middleware.RequirePartnerRole(), booking.Reject)
+			partners.POST("/bookings/:bookingId/cancel", middleware.RequirePartnerRole(), booking.CancelForPartner)
 			partners.POST("/bookings/:bookingId/send-otp", middleware.RequirePartnerRole(), booking.SendOTP)
 			partners.POST("/bookings/:bookingId/verify-otp", middleware.RequirePartnerRole(), booking.VerifyOTP)
 			partners.POST("/bookings/:bookingId/complete", middleware.RequirePartnerRole(), booking.Complete)

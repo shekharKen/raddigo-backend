@@ -87,6 +87,21 @@ func (s *NotificationService) BookingCancelled(ctx context.Context, booking mode
 		body, booking.ID)
 }
 
+// BookingCancelledByPartner notifies the user that the partner cancelled
+// their previously-accepted booking.
+func (s *NotificationService) BookingCancelledByPartner(ctx context.Context, booking model.Booking) {
+	if booking.User == nil {
+		return
+	}
+	body := "The partner cancelled your accepted pickup."
+	if booking.Reason != nil && *booking.Reason != "" {
+		body = fmt.Sprintf("%s Reason: %s", body, *booking.Reason)
+	}
+	s.notify(ctx, booking.UserID, model.NotificationRecipientUser, booking.User.FCMToken,
+		model.NotificationBookingCancelled, "Booking cancelled",
+		body, booking.ID)
+}
+
 // BookingCompleted notifies the user that their booking was completed.
 func (s *NotificationService) BookingCompleted(ctx context.Context, booking model.Booking) {
 	if booking.User == nil {
