@@ -37,8 +37,8 @@ func Load() Config {
 		PublicDir:       getEnv("PUBLIC_DIR", "./public"),
 		UploadDir:       getEnv("UPLOAD_DIR", "./public/uploads"),
 		JWTSecret:       getEnv("JWT_SECRET", "dev-secret-change-me"),
-		AccessTokenTTL:  getDuration("ACCESS_TOKEN_TTL", 15*time.Minute),
-		RefreshTokenTTL: getDuration("REFRESH_TOKEN_TTL", 720*time.Hour),
+		AccessTokenTTL:  getDuration("ACCESS_TOKEN_TTL", 24*time.Hour),
+		RefreshTokenTTL: getDuration("REFRESH_TOKEN_TTL", 7*24*time.Hour),
 		SlotDuration:    getDuration("SLOT_DURATION", 30*time.Minute),
 		// DevOTP, when set, is used as the fixed verification OTP instead of a
 		// random one. Intended for local development only; leave unset in production.
