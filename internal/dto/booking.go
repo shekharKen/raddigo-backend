@@ -110,6 +110,20 @@ type BookingResponse struct {
 	StatusLogs []BookingStatusLogResponse `json:"status_logs,omitempty"`
 }
 
+// UserStatsResponse is a customer's aggregate booking figures.
+type UserStatsResponse struct {
+	TotalBookings int64   `json:"total_bookings"`
+	TotalKgSent   float64 `json:"total_kg_sent"`
+}
+
+// PartnerStatsResponse is a partner's aggregate pickup and earnings figures.
+type PartnerStatsResponse struct {
+	TotalPickups          int64   `json:"total_pickups"`
+	TotalScrapCollectedKg float64 `json:"total_scrap_collected_kg"`
+	AverageRating         float64 `json:"average_rating"`
+	AmountPaid            float64 `json:"amount_paid"`
+}
+
 // BookingStatusLogResponse is a single entry in a booking's status history.
 type BookingStatusLogResponse struct {
 	Status    string    `json:"status"`

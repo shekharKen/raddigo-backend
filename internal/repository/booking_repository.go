@@ -35,7 +35,26 @@ type BookingRepository interface {
 	ListStatusLogs(ctx context.Context, bookingID string) ([]model.BookingStatusLog, error)
 	ListPickupsDueForReminder(ctx context.Context, slotDate, fromTime, toTime string) ([]model.Booking, error)
 	ClaimReminder(ctx context.Context, bookingID string, sentAt time.Time) (bool, error)
+	StatsByUser(ctx context.Context, userID string) (UserBookingStats, error)
+	StatsByPartner(ctx context.Context, partnerID string) (PartnerBookingStats, error)
 }
+
+// UserBookingStats holds a customer's aggregate booking figures.
+type UserBookingStats struct {
+	TotalBookings int64
+	TotalWeightKg float64
+}
+
+// PartnerBookingStats holds a partner's aggregate pickup and earnings figures.
+type PartnerBookingStats struct {
+	TotalPickups  int64
+	TotalWeightKg float64
+	AmountPaid    float64
+}
+
+// weightKgExpr normalizes a booking's completion weight to kilograms,
+// converting gram-denominated rows on the fly.
+const weightKgExpr = "COALESCE(SUM(CASE WHEN weight_unit = 'gram' THEN weight / 1000 ELSE weight END), 0)"
 
 // BookingCompleteInput carries the completion details a partner submits to
 // finish an accepted booking.
@@ -637,6 +656,52 @@ func (r *GormBookingRepository) ClaimReminder(ctx context.Context, bookingID str
 		return false, fmt.Errorf("claim reminder: %w", res.Error)
 	}
 	return res.RowsAffected == 1, nil
+}
+
+// StatsByUser returns a customer's total booking count (any status) and total
+// completion weight (in kg) across their completed bookings.
+func (r *GormBookingRepository) StatsByUser(ctx context.Context, userID string) (UserBookingStats, error) {
+	var stats UserBookingStats
+	if err := r.db.WithContext(ctx).
+		Model(&model.Booking{}).
+		Where("user_id = ?", userID).
+		Count(&stats.TotalBookings).Error; err != nil {
+		return UserBookingStats{}, fmt.Errorf("count user bookings: %w", err)
+	}
+	if err := r.db.WithContext(ctx).
+		Model(&model.Booking{}).
+		Where("user_id = ? AND status = ?", userID, model.BookingCompleted).
+		Select(weightKgExpr).
+		Scan(&stats.TotalWeightKg).Error; err != nil {
+		return UserBookingStats{}, fmt.Errorf("sum user booking weight: %w", err)
+	}
+	return stats, nil
+}
+
+// StatsByPartner returns a partner's total completed pickups, total
+// completion weight (in kg), and total amount paid to customers.
+func (r *GormBookingRepository) StatsByPartner(ctx context.Context, partnerID string) (PartnerBookingStats, error) {
+	var stats PartnerBookingStats
+	base := r.db.WithContext(ctx).
+		Model(&model.Booking{}).
+		Where("partner_id = ? AND status = ?", partnerID, model.BookingCompleted)
+	if err := base.Count(&stats.TotalPickups).Error; err != nil {
+		return PartnerBookingStats{}, fmt.Errorf("count partner pickups: %w", err)
+	}
+	var row struct {
+		WeightKg   float64
+		AmountPaid float64
+	}
+	if err := r.db.WithContext(ctx).
+		Model(&model.Booking{}).
+		Where("partner_id = ? AND status = ?", partnerID, model.BookingCompleted).
+		Select(weightKgExpr + " AS weight_kg, COALESCE(SUM(amount_paid), 0) AS amount_paid").
+		Scan(&row).Error; err != nil {
+		return PartnerBookingStats{}, fmt.Errorf("sum partner booking weight and amount: %w", err)
+	}
+	stats.TotalWeightKg = row.WeightKg
+	stats.AmountPaid = row.AmountPaid
+	return stats, nil
 }
 
 // insertBookingStatusLog records a booking status transition within tx.

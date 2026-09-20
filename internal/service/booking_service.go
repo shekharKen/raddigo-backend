@@ -207,6 +207,42 @@ func (s *BookingService) NextForPartner(ctx context.Context, partnerID string) (
 	return s.bookingDetails(ctx, booking)
 }
 
+// StatsForUser returns a customer's total booking count and total completion
+// weight (in kg) sent across their completed bookings.
+func (s *BookingService) StatsForUser(ctx context.Context, userID string) (dto.UserStatsResponse, error) {
+	stats, err := s.repo.StatsByUser(ctx, userID)
+	if err != nil {
+		return dto.UserStatsResponse{}, err
+	}
+	return dto.UserStatsResponse{
+		TotalBookings: stats.TotalBookings,
+		TotalKgSent:   math.Round(stats.TotalWeightKg*100) / 100,
+	}, nil
+}
+
+// StatsForPartner returns a partner's total completed pickups, total scrap
+// collected (in kg), average rating received from customers, and total
+// amount paid out to customers.
+func (s *BookingService) StatsForPartner(ctx context.Context, partnerID string) (dto.PartnerStatsResponse, error) {
+	stats, err := s.repo.StatsByPartner(ctx, partnerID)
+	if err != nil {
+		return dto.PartnerStatsResponse{}, err
+	}
+	avg, _, err := s.ratings.Summary(ctx, repository.RatingFilter{
+		Direction: model.RatingUserToPartner,
+		PartnerID: partnerID,
+	})
+	if err != nil {
+		return dto.PartnerStatsResponse{}, err
+	}
+	return dto.PartnerStatsResponse{
+		TotalPickups:          stats.TotalPickups,
+		TotalScrapCollectedKg: math.Round(stats.TotalWeightKg*100) / 100,
+		AverageRating:         math.Round(avg*100) / 100,
+		AmountPaid:            math.Round(stats.AmountPaid*100) / 100,
+	}, nil
+}
+
 // ListForPartner returns a partner's booking requests, optionally filtered by
 // status, each with the requesting user's limited details.
 func (s *BookingService) ListForPartner(ctx context.Context, partnerID, status string, page, pageSize int) (dto.PageResult[dto.BookingResponse], error) {

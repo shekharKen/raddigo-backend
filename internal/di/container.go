@@ -36,6 +36,7 @@ type Services struct {
 	Auth         *service.AuthService
 	Subscription *service.SubscriptionService
 	Notification *service.NotificationService
+	Home         *service.HomeService
 }
 
 // Handlers groups the HTTP layer.
@@ -49,6 +50,7 @@ type Handlers struct {
 	Profile      *handler.ProfileHandler
 	Subscription *handler.SubscriptionHandler
 	Notification *handler.NotificationHandler
+	Home         *handler.HomeHandler
 }
 
 // Container holds the fully wired application dependencies.
@@ -110,15 +112,21 @@ func buildRepositories(db *gorm.DB) Repositories {
 
 func buildServices(cfg config.Config, repos Repositories, mail mailer.Mailer, tokens *auth.TokenService, notifier notification.Notifier, logger *slog.Logger) Services {
 	notifications := service.NewNotificationService(notifier, repos.Notification, logger)
+	user := service.NewUserService(repos.User, mail, cfg.DevOTP, cfg.AppBaseURL)
+	partner := service.NewPartnerService(repos.Partner, repos.Rating, mail, cfg.SlotDuration, cfg.DevOTP, cfg.AppBaseURL)
+	address := service.NewAddressService(repos.Address)
+	booking := service.NewBookingService(repos.Booking, repos.Partner, repos.Rating, cfg.SlotDuration, cfg.AppBaseURL, mail, cfg.DevOTP, notifications)
+	subscription := service.NewSubscriptionService(repos.Subscription, cfg.MonthlySubscriptionPrice, cfg.AnnualSubscriptionPrice)
 	return Services{
-		User:         service.NewUserService(repos.User, mail, cfg.DevOTP, cfg.AppBaseURL),
-		Partner:      service.NewPartnerService(repos.Partner, repos.Rating, mail, cfg.SlotDuration, cfg.DevOTP, cfg.AppBaseURL),
-		Address:      service.NewAddressService(repos.Address),
+		User:         user,
+		Partner:      partner,
+		Address:      address,
 		Rating:       service.NewRatingService(repos.Rating),
-		Booking:      service.NewBookingService(repos.Booking, repos.Partner, repos.Rating, cfg.SlotDuration, cfg.AppBaseURL, mail, cfg.DevOTP, notifications),
+		Booking:      booking,
 		Auth:         service.NewAuthService(repos.User, repos.Partner, repos.Subscription, tokens, cfg.AppBaseURL),
-		Subscription: service.NewSubscriptionService(repos.Subscription, cfg.MonthlySubscriptionPrice, cfg.AnnualSubscriptionPrice),
+		Subscription: subscription,
 		Notification: notifications,
+		Home:         service.NewHomeService(user, partner, address, booking, subscription, notifications),
 	}
 }
 
@@ -133,5 +141,6 @@ func buildHandlers(cfg config.Config, services Services) Handlers {
 		Profile:      handler.NewProfileHandler(services.User, services.Partner, cfg.UploadDir),
 		Subscription: handler.NewSubscriptionHandler(services.Subscription),
 		Notification: handler.NewNotificationHandler(services.Notification),
+		Home:         handler.NewHomeHandler(services.Home),
 	}
 }

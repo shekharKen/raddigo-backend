@@ -22,6 +22,7 @@ func NewRouter(
 	profile *handler.ProfileHandler,
 	subscription *handler.SubscriptionHandler,
 	notification *handler.NotificationHandler,
+	home *handler.HomeHandler,
 	authenticate gin.HandlerFunc,
 	publicDir string,
 ) http.Handler {
@@ -84,8 +85,12 @@ func NewRouter(
 			users.PUT("/bookings/:bookingId", middleware.RequireUserRole(), booking.Update)
 			users.POST("/bookings/:bookingId/cancel", middleware.RequireUserRole(), booking.Cancel)
 
+			users.GET("/stats", middleware.RequireUserRole(), booking.StatsForUser)
+
 			users.GET("/notifications", middleware.RequireUserRole(), notification.ListForUser)
 			users.POST("/notifications/:notificationId/read", middleware.RequireUserRole(), notification.MarkRead)
+
+			users.GET("/home", middleware.RequireUserRole(), home.ForUser)
 		}
 
 		partners := v1.Group("/partner")
@@ -109,6 +114,8 @@ func NewRouter(
 			partners.POST("/bookings/:bookingId/verify-otp", middleware.RequirePartnerRole(), booking.VerifyOTP)
 			partners.POST("/bookings/:bookingId/complete", middleware.RequirePartnerRole(), booking.Complete)
 
+			partners.GET("/stats", middleware.RequirePartnerRole(), booking.StatsForPartner)
+
 			partners.POST("/subscription", middleware.RequirePartnerRole(), subscription.Subscribe)
 			partners.GET("/subscription", middleware.RequirePartnerRole(), subscription.GetActive)
 			partners.POST("/subscription/upgrade", middleware.RequirePartnerRole(), subscription.Upgrade)
@@ -117,6 +124,8 @@ func NewRouter(
 
 			partners.GET("/notifications", middleware.RequirePartnerRole(), notification.ListForPartner)
 			partners.POST("/notifications/:notificationId/read", middleware.RequirePartnerRole(), notification.MarkRead)
+
+			partners.GET("/home", middleware.RequirePartnerRole(), home.ForPartner)
 		}
 	}
 

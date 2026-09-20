@@ -137,6 +137,11 @@ func (s *NotificationService) MarkRead(ctx context.Context, recipientID, id stri
 	return s.repo.MarkRead(ctx, id, recipientID)
 }
 
+// CountUnread returns how many of a recipient's notifications are unread.
+func (s *NotificationService) CountUnread(ctx context.Context, recipientID string, role model.NotificationRecipientRole) (int64, error) {
+	return s.repo.CountUnread(ctx, recipientID, role)
+}
+
 // notify persists the in-app notification synchronously, then best-effort
 // sends the push notification asynchronously so a slow/unreachable FCM call
 // never blocks the caller's booking action.

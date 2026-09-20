@@ -29,6 +29,8 @@ type bookingService interface {
 	SendOTP(ctx context.Context, partnerID, bookingID string) (dto.BookingResponse, error)
 	VerifyOTP(ctx context.Context, partnerID, bookingID string, in dto.VerifyBookingOTPRequest) (dto.BookingResponse, error)
 	Complete(ctx context.Context, partnerID, bookingID string, in dto.CompleteBookingRequest) (dto.BookingResponse, error)
+	StatsForUser(ctx context.Context, userID string) (dto.UserStatsResponse, error)
+	StatsForPartner(ctx context.Context, partnerID string) (dto.PartnerStatsResponse, error)
 }
 
 // BookingHandler exposes slot-booking HTTP handlers.
@@ -155,6 +157,26 @@ func (h *BookingHandler) NextForPartner(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"booking": booking})
+}
+
+// StatsForUser handles GET /api/v1/user/stats.
+func (h *BookingHandler) StatsForUser(c *gin.Context) {
+	stats, err := h.svc.StatsForUser(c.Request.Context(), c.GetString(middleware.ContextSubjectKey))
+	if err != nil {
+		h.writeServiceError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"stats": stats})
+}
+
+// StatsForPartner handles GET /api/v1/partner/stats.
+func (h *BookingHandler) StatsForPartner(c *gin.Context) {
+	stats, err := h.svc.StatsForPartner(c.Request.Context(), c.GetString(middleware.ContextSubjectKey))
+	if err != nil {
+		h.writeServiceError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"stats": stats})
 }
 
 // Accept handles POST /api/v1/partner/bookings/:bookingId/accept.

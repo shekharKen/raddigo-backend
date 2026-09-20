@@ -69,6 +69,7 @@ func run(logger *slog.Logger) error {
 		c.Handlers.Profile,
 		c.Handlers.Subscription,
 		c.Handlers.Notification,
+		c.Handlers.Home,
 		middleware.Authenticate(c.Tokens),
 		cfg.PublicDir,
 	)

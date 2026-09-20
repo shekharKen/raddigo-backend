@@ -16,6 +16,7 @@ import (
 type NotificationRepository interface {
 	Create(ctx context.Context, n *model.Notification) error
 	ListByRecipient(ctx context.Context, recipientID string, role model.NotificationRecipientRole, limit, offset int) ([]model.Notification, int64, error)
+	CountUnread(ctx context.Context, recipientID string, role model.NotificationRecipientRole) (int64, error)
 	MarkRead(ctx context.Context, id, recipientID string) error
 }
 
@@ -59,6 +60,18 @@ func (r *GormNotificationRepository) ListByRecipient(ctx context.Context, recipi
 		return nil, 0, fmt.Errorf("list notifications: %w", err)
 	}
 	return notifications, total, nil
+}
+
+// CountUnread returns how many of a recipient's notifications are unread.
+func (r *GormNotificationRepository) CountUnread(ctx context.Context, recipientID string, role model.NotificationRecipientRole) (int64, error) {
+	var count int64
+	if err := r.db.WithContext(ctx).
+		Model(&model.Notification{}).
+		Where("recipient_id = ? AND recipient_role = ? AND read_at IS NULL", recipientID, role).
+		Count(&count).Error; err != nil {
+		return 0, fmt.Errorf("count unread notifications: %w", err)
+	}
+	return count, nil
 }
 
 // MarkRead flags a recipient's notification as read. It returns
