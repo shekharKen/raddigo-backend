@@ -133,6 +133,7 @@ func (s *UserService) Register(ctx context.Context, in dto.RegisterRequest) (mod
 		EmailVerified:   false,
 		VerifyOTP:       otp,
 		VerifyOTPExpiry: now.Add(otpTTL),
+		FCMToken:        strings.TrimSpace(in.FCMToken),
 		Addresses:       addresses,
 		CreatedAt:       now,
 		UpdatedAt:       now,

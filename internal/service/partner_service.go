@@ -116,6 +116,7 @@ func (s *PartnerService) Register(ctx context.Context, in dto.RegisterPartnerReq
 		EmailVerified:   false,
 		VerifyOTP:       otp,
 		VerifyOTPExpiry: now.Add(otpTTL),
+		FCMToken:        strings.TrimSpace(in.FCMToken),
 		ServiceArea:     points,
 		CreatedAt:       now,
 		UpdatedAt:       now,

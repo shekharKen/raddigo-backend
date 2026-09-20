@@ -22,6 +22,7 @@ type PartnerRepository interface {
 	GetByEmail(ctx context.Context, email string) (model.Partner, error)
 	MarkEmailVerified(ctx context.Context, id string) error
 	UpdateProfile(ctx context.Context, id string, fields map[string]any) error
+	UpdateFCMToken(ctx context.Context, id, token string) error
 	UpsertStoreAddress(ctx context.Context, partnerID string, address *model.Address) error
 	UpsertServiceArea(ctx context.Context, partnerID string, points []model.PolygonPoint) error
 	SetResetOTP(ctx context.Context, id, otp string, expiry time.Time) error
@@ -170,6 +171,21 @@ func (r *GormPartnerRepository) GetByID(ctx context.Context, id string) (model.P
 		return model.Partner{}, fmt.Errorf("get partner by id: %w", err)
 	}
 	return partner, nil
+}
+
+// UpdateFCMToken stores the device token used to push notifications to a partner.
+func (r *GormPartnerRepository) UpdateFCMToken(ctx context.Context, id, token string) error {
+	res := r.db.WithContext(ctx).
+		Model(&model.Partner{}).
+		Where("id = ?", id).
+		Update("fcm_token", token)
+	if res.Error != nil {
+		return fmt.Errorf("update partner fcm token: %w", res.Error)
+	}
+	if res.RowsAffected == 0 {
+		return utils.ErrNotFound
+	}
+	return nil
 }
 
 // UpdateProfile updates the given profile fields for the partner.

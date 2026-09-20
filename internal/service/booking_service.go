@@ -23,15 +23,16 @@ const bookingOTPTTL = 2 * time.Hour
 // BookingService contains slot-booking logic: users request a partner's slot
 // and partners accept or reject the request.
 type BookingService struct {
-	repo         repository.BookingRepository
-	partners     repository.PartnerRepository
-	ratings      repository.RatingRepository
-	mailer       mailer.Mailer
-	slotDuration time.Duration
-	baseURL      string
-	now          func() time.Time
-	id           func() string
-	otp          func() (string, error)
+	repo          repository.BookingRepository
+	partners      repository.PartnerRepository
+	ratings       repository.RatingRepository
+	mailer        mailer.Mailer
+	notifications *NotificationService
+	slotDuration  time.Duration
+	baseURL       string
+	now           func() time.Time
+	id            func() string
+	otp           func() (string, error)
 }
 
 // NewBookingService creates a BookingService. slotDuration must match the value
@@ -39,20 +40,21 @@ type BookingService struct {
 // baseURL is prefixed onto stored relative image paths when returning them to
 // clients. devOTP, when non-empty, is used as a fixed completion OTP instead of
 // a random one (development only).
-func NewBookingService(repo repository.BookingRepository, partners repository.PartnerRepository, ratings repository.RatingRepository, slotDuration time.Duration, baseURL string, m mailer.Mailer, devOTP string) *BookingService {
+func NewBookingService(repo repository.BookingRepository, partners repository.PartnerRepository, ratings repository.RatingRepository, slotDuration time.Duration, baseURL string, m mailer.Mailer, devOTP string, notifications *NotificationService) *BookingService {
 	if slotDuration <= 0 {
 		slotDuration = 30 * time.Minute
 	}
 	return &BookingService{
-		repo:         repo,
-		partners:     partners,
-		ratings:      ratings,
-		mailer:       m,
-		slotDuration: slotDuration,
-		baseURL:      baseURL,
-		now:          time.Now,
-		id:           func() string { return uuid.NewString() },
-		otp:          newOTPFunc(devOTP),
+		repo:          repo,
+		partners:      partners,
+		ratings:       ratings,
+		mailer:        m,
+		notifications: notifications,
+		slotDuration:  slotDuration,
+		baseURL:       baseURL,
+		now:           time.Now,
+		id:            func() string { return uuid.NewString() },
+		otp:           newOTPFunc(devOTP),
 	}
 }
 
@@ -107,6 +109,7 @@ func (s *BookingService) Create(ctx context.Context, userID string, in dto.Creat
 	}
 
 	booking.Partner = &partner
+	s.notifications.BookingRequested(ctx, booking)
 	return s.toBookingResponse(booking), nil
 }
 
@@ -228,6 +231,7 @@ func (s *BookingService) Accept(ctx context.Context, partnerID, bookingID string
 	if err != nil {
 		return dto.BookingResponse{}, err
 	}
+	s.notifications.BookingAccepted(ctx, booking)
 	return s.toBookingResponse(booking), nil
 }
 
@@ -237,6 +241,7 @@ func (s *BookingService) Reject(ctx context.Context, partnerID, bookingID string
 	if err != nil {
 		return dto.BookingResponse{}, err
 	}
+	s.notifications.BookingRejected(ctx, booking)
 	return s.toBookingResponse(booking), nil
 }
 
@@ -290,6 +295,7 @@ func (s *BookingService) Cancel(ctx context.Context, userID, bookingID string) (
 	if err != nil {
 		return dto.BookingResponse{}, err
 	}
+	s.notifications.BookingCancelled(ctx, booking)
 	return s.toBookingResponse(booking), nil
 }
 
@@ -357,6 +363,7 @@ func (s *BookingService) Complete(ctx context.Context, partnerID, bookingID stri
 	if err != nil {
 		return dto.BookingResponse{}, err
 	}
+	s.notifications.BookingCompleted(ctx, booking)
 	return s.toBookingResponse(booking), nil
 }
 

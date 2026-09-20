@@ -68,10 +68,15 @@ func run(logger *slog.Logger) error {
 		c.Handlers.Booking,
 		c.Handlers.Profile,
 		c.Handlers.Subscription,
+		c.Handlers.Notification,
 		middleware.Authenticate(c.Tokens),
 		cfg.PublicDir,
 	)
 	srv := server.New(cfg, logger, router)
+
+	// Run the reminder scheduler until shutdown; it sends the one-time
+	// pickup-in-30-minutes notification.
+	go c.Scheduler.Run(ctx)
 
 	// Run the server and capture a startup failure.
 	serverErr := make(chan error, 1)

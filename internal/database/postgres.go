@@ -61,6 +61,7 @@ func Migrate(db *gorm.DB) error {
 		&model.PartnerSubscription{},
 		&model.SubscriptionTransaction{},
 		&model.PromoCode{},
+		&model.Notification{},
 	); err != nil {
 		return fmt.Errorf("auto migrate: %w", err)
 	}

@@ -41,6 +41,10 @@ type Booking struct {
 	CompletionOTPExpiry time.Time  `json:"-"`
 	OTPVerifiedAt       *time.Time `json:"-"`
 
+	// ReminderSentAt is set once the 30-minutes-before-pickup push has been
+	// sent, so the reminder job never sends it twice for the same booking.
+	ReminderSentAt *time.Time `json:"-"`
+
 	// Completion details, filled in by the partner (alongside OTP verification)
 	// once the scrap has been collected and weighed.
 	Weight           *float64                 `json:"weight,omitempty"`

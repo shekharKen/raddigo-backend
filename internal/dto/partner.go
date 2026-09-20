@@ -13,6 +13,8 @@ type RegisterPartnerRequest struct {
 	StartTime       string                `json:"start_time"`
 	EndTime         string                `json:"end_time"`
 	Polygon         []PolygonPointRequest `json:"polygon"`
+	// FCMToken, when provided, registers the device for push notifications.
+	FCMToken string `json:"fcm_token"`
 }
 
 // PolygonPointRequest is a single vertex of the partner's operating area.

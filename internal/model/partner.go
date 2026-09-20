@@ -23,6 +23,7 @@ type Partner struct {
 	ResetOTPExpiry   time.Time      `json:"-"`
 	ResetToken       string         `json:"-" gorm:"index"`
 	ResetTokenExpiry time.Time      `json:"-"`
+	FCMToken         string         `json:"-" gorm:"index"`
 	ServiceArea      []PolygonPoint `json:"service_area" gorm:"constraint:OnDelete:CASCADE"`
 	CreatedAt        time.Time      `json:"created_at"`
 	UpdatedAt        time.Time      `json:"updated_at"`

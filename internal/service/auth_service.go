@@ -3,6 +3,8 @@ package service
 import (
 	"context"
 	"errors"
+	"log/slog"
+	"strings"
 
 	"golang.org/x/crypto/bcrypt"
 
@@ -43,6 +45,10 @@ func (s *AuthService) LoginUser(ctx context.Context, in dto.LoginRequest) (dto.A
 		return dto.AuthResponse{}, err
 	}
 
+	s.saveFCMToken(ctx, in.FCMToken, func(token string) error {
+		return s.users.UpdateFCMToken(ctx, user.ID, token)
+	})
+
 	pair, err := s.IssueForUser(user.ID)
 	if err != nil {
 		return dto.AuthResponse{}, err
@@ -70,6 +76,10 @@ func (s *AuthService) LoginPartner(ctx context.Context, in dto.LoginRequest) (dt
 		return dto.AuthResponse{}, err
 	}
 
+	s.saveFCMToken(ctx, in.FCMToken, func(token string) error {
+		return s.partners.UpdateFCMToken(ctx, partner.ID, token)
+	})
+
 	pair, err := s.IssueForPartner(partner.ID)
 	if err != nil {
 		return dto.AuthResponse{}, err
@@ -87,6 +97,18 @@ func (s *AuthService) LoginPartner(ctx context.Context, in dto.LoginRequest) (dt
 // subscription. Used to enrich partner login and register responses.
 func (s *AuthService) PartnerSubscribed(ctx context.Context, partnerID string) (bool, error) {
 	return s.subscriptions.HasActive(ctx, partnerID)
+}
+
+// saveFCMToken best-effort persists a non-empty device token submitted at
+// login; failures are not fatal to the login itself.
+func (s *AuthService) saveFCMToken(ctx context.Context, token string, update func(string) error) {
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return
+	}
+	if err := update(token); err != nil {
+		slog.Default().Error("save fcm token", "error", err)
+	}
 }
 
 // Refresh validates a refresh token and issues a new token pair for the same

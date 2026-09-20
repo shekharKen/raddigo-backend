@@ -33,6 +33,8 @@ type BookingRepository interface {
 	VerifyOTP(ctx context.Context, bookingID, partnerID, otp string, now time.Time) (model.Booking, error)
 	Complete(ctx context.Context, bookingID, partnerID string, in BookingCompleteInput) (model.Booking, error)
 	ListStatusLogs(ctx context.Context, bookingID string) ([]model.BookingStatusLog, error)
+	ListPickupsDueForReminder(ctx context.Context, slotDate, fromTime, toTime string) ([]model.Booking, error)
+	ClaimReminder(ctx context.Context, bookingID string, sentAt time.Time) (bool, error)
 }
 
 // BookingCompleteInput carries the completion details a partner submits to
@@ -604,6 +606,37 @@ func (r *GormBookingRepository) ListStatusLogs(ctx context.Context, bookingID st
 		return nil, fmt.Errorf("list booking status logs: %w", err)
 	}
 	return logs, nil
+}
+
+// ListPickupsDueForReminder returns accepted bookings for slotDate whose
+// slot_start_time falls within [fromTime, toTime] (both "HH:MM", inclusive)
+// and that have not yet had a pickup reminder sent, with user and partner
+// preloaded so a notification can be sent immediately.
+func (r *GormBookingRepository) ListPickupsDueForReminder(ctx context.Context, slotDate, fromTime, toTime string) ([]model.Booking, error) {
+	var bookings []model.Booking
+	if err := r.db.WithContext(ctx).
+		Preload("User").
+		Preload("Partner").
+		Where("status = ? AND slot_date = ? AND slot_start_time BETWEEN ? AND ? AND reminder_sent_at IS NULL",
+			model.BookingAccepted, slotDate, fromTime, toTime).
+		Find(&bookings).Error; err != nil {
+		return nil, fmt.Errorf("list pickups due for reminder: %w", err)
+	}
+	return bookings, nil
+}
+
+// ClaimReminder atomically marks a booking's pickup reminder as sent,
+// returning false when it was already claimed by a previous poll (i.e. the
+// caller should not send a duplicate notification).
+func (r *GormBookingRepository) ClaimReminder(ctx context.Context, bookingID string, sentAt time.Time) (bool, error) {
+	res := r.db.WithContext(ctx).
+		Model(&model.Booking{}).
+		Where("id = ? AND reminder_sent_at IS NULL", bookingID).
+		Update("reminder_sent_at", sentAt)
+	if res.Error != nil {
+		return false, fmt.Errorf("claim reminder: %w", res.Error)
+	}
+	return res.RowsAffected == 1, nil
 }
 
 // insertBookingStatusLog records a booking status transition within tx.

@@ -1,6 +1,7 @@
 package di
 
 import (
+	"context"
 	"log/slog"
 
 	"gorm.io/gorm"
@@ -9,6 +10,7 @@ import (
 	"github.com/raddigo/raddigo/internal/config"
 	"github.com/raddigo/raddigo/internal/handler"
 	"github.com/raddigo/raddigo/internal/mailer"
+	"github.com/raddigo/raddigo/internal/notification"
 	"github.com/raddigo/raddigo/internal/repository"
 	"github.com/raddigo/raddigo/internal/service"
 )
@@ -21,6 +23,7 @@ type Repositories struct {
 	Rating       repository.RatingRepository
 	Booking      repository.BookingRepository
 	Subscription repository.SubscriptionRepository
+	Notification repository.NotificationRepository
 }
 
 // Services groups the business-logic layer.
@@ -32,6 +35,7 @@ type Services struct {
 	Booking      *service.BookingService
 	Auth         *service.AuthService
 	Subscription *service.SubscriptionService
+	Notification *service.NotificationService
 }
 
 // Handlers groups the HTTP layer.
@@ -44,6 +48,7 @@ type Handlers struct {
 	Booking      *handler.BookingHandler
 	Profile      *handler.ProfileHandler
 	Subscription *handler.SubscriptionHandler
+	Notification *handler.NotificationHandler
 }
 
 // Container holds the fully wired application dependencies.
@@ -52,6 +57,7 @@ type Container struct {
 	Services     Services
 	Handlers     Handlers
 	Tokens       *auth.TokenService
+	Scheduler    *service.ReminderScheduler
 }
 
 // New builds the dependency graph layer by layer: repositories, then services,
@@ -59,16 +65,35 @@ type Container struct {
 func New(cfg config.Config, logger *slog.Logger, db *gorm.DB) *Container {
 	repos := buildRepositories(db)
 	mail := mailer.NewLogMailer(logger)
+	notifier := buildNotifier(cfg, logger)
 	tokens := auth.NewTokenService(cfg.JWTSecret, cfg.AccessTokenTTL, cfg.RefreshTokenTTL)
-	services := buildServices(cfg, repos, mail, tokens)
+	services := buildServices(cfg, repos, mail, tokens, notifier, logger)
 	handlers := buildHandlers(cfg, services)
+	scheduler := service.NewReminderScheduler(repos.Booking, services.Notification, cfg.ReminderCheckInterval, cfg.ReminderLeadMinutes, logger)
 
 	return &Container{
 		Repositories: repos,
 		Services:     services,
 		Handlers:     handlers,
 		Tokens:       tokens,
+		Scheduler:    scheduler,
 	}
+}
+
+// buildNotifier constructs the FCM notifier from the configured service
+// account file, falling back to a log-only notifier (e.g. local development)
+// when none is configured or it fails to initialize.
+func buildNotifier(cfg config.Config, logger *slog.Logger) notification.Notifier {
+	if cfg.FirebaseCredentialsFile == "" {
+		logger.Warn("no firebase credentials configured, push notifications will only be logged")
+		return notification.NewLogNotifier(logger)
+	}
+	notifier, err := notification.NewFCMNotifier(context.Background(), cfg.FirebaseCredentialsFile)
+	if err != nil {
+		logger.Error("init firebase notifier, falling back to log notifier", "error", err)
+		return notification.NewLogNotifier(logger)
+	}
+	return notifier
 }
 
 func buildRepositories(db *gorm.DB) Repositories {
@@ -79,18 +104,21 @@ func buildRepositories(db *gorm.DB) Repositories {
 		Rating:       repository.NewGormRatingRepository(db),
 		Booking:      repository.NewGormBookingRepository(db),
 		Subscription: repository.NewGormSubscriptionRepository(db),
+		Notification: repository.NewGormNotificationRepository(db),
 	}
 }
 
-func buildServices(cfg config.Config, repos Repositories, mail mailer.Mailer, tokens *auth.TokenService) Services {
+func buildServices(cfg config.Config, repos Repositories, mail mailer.Mailer, tokens *auth.TokenService, notifier notification.Notifier, logger *slog.Logger) Services {
+	notifications := service.NewNotificationService(notifier, repos.Notification, logger)
 	return Services{
 		User:         service.NewUserService(repos.User, mail, cfg.DevOTP, cfg.AppBaseURL),
 		Partner:      service.NewPartnerService(repos.Partner, repos.Rating, mail, cfg.SlotDuration, cfg.DevOTP, cfg.AppBaseURL),
 		Address:      service.NewAddressService(repos.Address),
 		Rating:       service.NewRatingService(repos.Rating),
-		Booking:      service.NewBookingService(repos.Booking, repos.Partner, repos.Rating, cfg.SlotDuration, cfg.AppBaseURL, mail, cfg.DevOTP),
+		Booking:      service.NewBookingService(repos.Booking, repos.Partner, repos.Rating, cfg.SlotDuration, cfg.AppBaseURL, mail, cfg.DevOTP, notifications),
 		Auth:         service.NewAuthService(repos.User, repos.Partner, repos.Subscription, tokens),
 		Subscription: service.NewSubscriptionService(repos.Subscription, cfg.MonthlySubscriptionPrice, cfg.AnnualSubscriptionPrice),
+		Notification: notifications,
 	}
 }
 
@@ -104,5 +132,6 @@ func buildHandlers(cfg config.Config, services Services) Handlers {
 		Booking:      handler.NewBookingHandler(services.Booking, cfg.UploadDir),
 		Profile:      handler.NewProfileHandler(services.User, services.Partner, cfg.UploadDir),
 		Subscription: handler.NewSubscriptionHandler(services.Subscription),
+		Notification: handler.NewNotificationHandler(services.Notification),
 	}
 }

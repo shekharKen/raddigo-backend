@@ -24,6 +24,9 @@ type Config struct {
 	DevOTP                   string
 	MonthlySubscriptionPrice float64
 	AnnualSubscriptionPrice  float64
+	FirebaseCredentialsFile  string
+	ReminderCheckInterval    time.Duration
+	ReminderLeadMinutes      int
 }
 
 // Load builds a Config from environment variables, falling back to sensible
@@ -48,6 +51,10 @@ func Load() Config {
 		DevOTP:                   getEnv("DEV_OTP", ""),
 		MonthlySubscriptionPrice: getFloat("MONTHLY_SUBSCRIPTION_PRICE", 499),
 		AnnualSubscriptionPrice:  getFloat("ANNUAL_SUBSCRIPTION_PRICE", 4999),
+		// FirebaseCredentialsFile, when unset, falls back to a log-only notifier.
+		FirebaseCredentialsFile: getEnv("GOOGLE_APPLICATION_CREDENTIALS", ""),
+		ReminderCheckInterval:   getDuration("REMINDER_CHECK_INTERVAL", time.Minute),
+		ReminderLeadMinutes:     getInt("REMINDER_LEAD_MINUTES", 30),
 	}
 }
 
@@ -71,6 +78,15 @@ func getFloat(key string, fallback float64) float64 {
 	if v, ok := os.LookupEnv(key); ok {
 		if f, err := strconv.ParseFloat(v, 64); err == nil {
 			return f
+		}
+	}
+	return fallback
+}
+
+func getInt(key string, fallback int) int {
+	if v, ok := os.LookupEnv(key); ok {
+		if i, err := strconv.Atoi(v); err == nil {
+			return i
 		}
 	}
 	return fallback

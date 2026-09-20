@@ -19,6 +19,7 @@ type User struct {
 	ResetOTPExpiry   time.Time `json:"-"`
 	ResetToken       string    `json:"-" gorm:"index"`
 	ResetTokenExpiry time.Time `json:"-"`
+	FCMToken         string    `json:"-" gorm:"index"`
 	Addresses        []Address `json:"addresses" gorm:"constraint:OnDelete:CASCADE"`
 	CreatedAt        time.Time `json:"created_at"`
 	UpdatedAt        time.Time `json:"updated_at"`

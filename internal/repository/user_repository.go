@@ -21,6 +21,7 @@ type UserRepository interface {
 	GetByEmail(ctx context.Context, email string) (model.User, error)
 	MarkEmailVerified(ctx context.Context, id string) error
 	UpdateProfile(ctx context.Context, id string, fields map[string]any) error
+	UpdateFCMToken(ctx context.Context, id, token string) error
 	UpsertPrimaryAddress(ctx context.Context, userID string, address *model.Address) error
 	SetResetOTP(ctx context.Context, id, otp string, expiry time.Time) error
 	SetResetToken(ctx context.Context, id, token string, expiry time.Time) error
@@ -115,6 +116,21 @@ func (r *GormUserRepository) UpdateProfile(ctx context.Context, id string, field
 		Updates(fields)
 	if res.Error != nil {
 		return fmt.Errorf("update user profile: %w", res.Error)
+	}
+	if res.RowsAffected == 0 {
+		return utils.ErrNotFound
+	}
+	return nil
+}
+
+// UpdateFCMToken stores the device token used to push notifications to a user.
+func (r *GormUserRepository) UpdateFCMToken(ctx context.Context, id, token string) error {
+	res := r.db.WithContext(ctx).
+		Model(&model.User{}).
+		Where("id = ?", id).
+		Update("fcm_token", token)
+	if res.Error != nil {
+		return fmt.Errorf("update user fcm token: %w", res.Error)
 	}
 	if res.RowsAffected == 0 {
 		return utils.ErrNotFound

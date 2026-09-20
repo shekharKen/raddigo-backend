@@ -11,6 +11,8 @@ type RegisterRequest struct {
 	MobileNo        string           `json:"mobile_no"`
 	Password        string           `json:"password"`
 	Addresses       []AddressRequest `json:"addresses"`
+	// FCMToken, when provided, registers the device for push notifications.
+	FCMToken string `json:"fcm_token"`
 }
 
 // AddressRequest is a single address supplied during registration.
@@ -30,6 +32,8 @@ type AddressRequest struct {
 type LoginRequest struct {
 	Email    string `json:"email"`
 	Password string `json:"password"`
+	// FCMToken, when provided, registers the device for push notifications.
+	FCMToken string `json:"fcm_token"`
 }
 
 // VerifyOTPRequest carries the email and OTP submitted to confirm registration.
