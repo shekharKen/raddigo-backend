@@ -195,25 +195,11 @@ func (s *BookingService) ListForPartner(ctx context.Context, partnerID, status s
 	return s.toBookingPage(bookings, page, pageSize, total), nil
 }
 
-// Accept marks a partner's pending booking as accepted, disabling that slot,
-// and generates and emails a completion OTP to the customer for the partner
-// to read back later, confirming the handoff before the booking can be
-// completed.
+// Accept marks a partner's pending booking as accepted, disabling that slot.
 func (s *BookingService) Accept(ctx context.Context, partnerID, bookingID string) (dto.BookingResponse, error) {
-	otp, err := s.otp()
+	booking, err := s.repo.Accept(ctx, bookingID, partnerID)
 	if err != nil {
 		return dto.BookingResponse{}, err
-	}
-
-	booking, err := s.repo.Accept(ctx, bookingID, partnerID, otp, s.now().Add(bookingOTPTTL))
-	if err != nil {
-		return dto.BookingResponse{}, err
-	}
-
-	if booking.User != nil && booking.User.Email != "" {
-		if err := s.mailer.SendBookingOTP(ctx, booking.User.Email, otp); err != nil {
-			return dto.BookingResponse{}, err
-		}
 	}
 	return s.toBookingResponse(booking), nil
 }
@@ -280,6 +266,27 @@ func (s *BookingService) Cancel(ctx context.Context, userID, bookingID string) (
 	return s.toBookingResponse(booking), nil
 }
 
+// SendOTP generates and emails a fresh completion OTP to the customer for an
+// accepted booking, for the partner to read back later via VerifyOTP.
+func (s *BookingService) SendOTP(ctx context.Context, partnerID, bookingID string) (dto.BookingResponse, error) {
+	otp, err := s.otp()
+	if err != nil {
+		return dto.BookingResponse{}, err
+	}
+
+	booking, err := s.repo.SendOTP(ctx, bookingID, partnerID, otp, s.now().Add(bookingOTPTTL))
+	if err != nil {
+		return dto.BookingResponse{}, err
+	}
+
+	if booking.User != nil && booking.User.Email != "" {
+		if err := s.mailer.SendBookingOTP(ctx, booking.User.Email, otp); err != nil {
+			return dto.BookingResponse{}, err
+		}
+	}
+	return s.toBookingResponse(booking), nil
+}
+
 // VerifyOTP confirms the completion OTP a partner reads back from the
 // customer for an accepted booking. It must succeed before Complete will
 // accept the booking's completion details.
@@ -315,10 +322,10 @@ func (s *BookingService) Complete(ctx context.Context, partnerID, bookingID stri
 	}
 
 	booking, err := s.repo.Complete(ctx, bookingID, partnerID, repository.BookingCompleteInput{
-		WeightKg:    in.WeightKg,
-		WeightGrams: in.WeightGrams,
-		AmountPaid:  in.AmountPaid,
-		Images:      images,
+		Weight:     in.Weight,
+		WeightUnit: strings.ToLower(strings.TrimSpace(in.WeightUnit)),
+		AmountPaid: in.AmountPaid,
+		Images:     images,
 	})
 	if err != nil {
 		return dto.BookingResponse{}, err
@@ -430,8 +437,8 @@ func (s *BookingService) toBookingResponse(b model.Booking) dto.BookingResponse 
 		Description:     b.Description,
 		Note:            b.Note,
 		OTPVerified:     b.OTPVerifiedAt != nil,
-		WeightKg:        b.WeightKg,
-		WeightGrams:     b.WeightGrams,
+		Weight:          b.Weight,
+		WeightUnit:      b.WeightUnit,
 		AmountPaid:      b.AmountPaid,
 		CreatedAt:       b.CreatedAt,
 		UpdatedAt:       b.UpdatedAt,
