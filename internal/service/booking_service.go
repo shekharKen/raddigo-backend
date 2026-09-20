@@ -165,16 +165,43 @@ func (s *BookingService) bookingDetails(ctx context.Context, booking model.Booki
 	return res, nil
 }
 
-// ListForUser returns a user's bookings, each with its partner details.
-func (s *BookingService) ListForUser(ctx context.Context, userID string, page, pageSize int) (dto.PageResult[dto.BookingResponse], error) {
+// ListForUser returns a user's bookings, optionally filtered by status, each
+// with its partner details.
+func (s *BookingService) ListForUser(ctx context.Context, userID, status string, page, pageSize int) (dto.PageResult[dto.BookingResponse], error) {
+	filter, err := parseBookingStatus(status)
+	if err != nil {
+		return dto.PageResult[dto.BookingResponse]{}, err
+	}
+
 	page, pageSize = dto.NormalizePageParams(page, pageSize)
 	offset := (page - 1) * pageSize
 
-	bookings, total, err := s.repo.ListByUser(ctx, userID, pageSize, offset)
+	bookings, total, err := s.repo.ListByUser(ctx, userID, filter, pageSize, offset)
 	if err != nil {
 		return dto.PageResult[dto.BookingResponse]{}, err
 	}
 	return s.toBookingPage(bookings, page, pageSize, total), nil
+}
+
+// NextForUser returns a user's next scheduled (accepted) pickup, with full
+// details: partner details, and the booking's status log history.
+func (s *BookingService) NextForUser(ctx context.Context, userID string) (dto.BookingResponse, error) {
+	booking, err := s.repo.NextForUser(ctx, userID)
+	if err != nil {
+		return dto.BookingResponse{}, err
+	}
+	return s.bookingDetails(ctx, booking)
+}
+
+// NextForPartner returns a partner's next scheduled (accepted) pickup, with
+// full details: the requesting customer's details, and the booking's status
+// log history.
+func (s *BookingService) NextForPartner(ctx context.Context, partnerID string) (dto.BookingResponse, error) {
+	booking, err := s.repo.NextForPartner(ctx, partnerID)
+	if err != nil {
+		return dto.BookingResponse{}, err
+	}
+	return s.bookingDetails(ctx, booking)
 }
 
 // ListForPartner returns a partner's booking requests, optionally filtered by

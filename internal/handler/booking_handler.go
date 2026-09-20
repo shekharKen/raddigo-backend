@@ -18,8 +18,10 @@ type bookingService interface {
 	Create(ctx context.Context, userID string, in dto.CreateBookingRequest) (dto.BookingResponse, error)
 	GetForUser(ctx context.Context, userID, bookingID string) (dto.BookingResponse, error)
 	GetForPartner(ctx context.Context, partnerID, bookingID string) (dto.BookingResponse, error)
-	ListForUser(ctx context.Context, userID string, page, pageSize int) (dto.PageResult[dto.BookingResponse], error)
+	ListForUser(ctx context.Context, userID, status string, page, pageSize int) (dto.PageResult[dto.BookingResponse], error)
 	ListForPartner(ctx context.Context, partnerID, status string, page, pageSize int) (dto.PageResult[dto.BookingResponse], error)
+	NextForUser(ctx context.Context, userID string) (dto.BookingResponse, error)
+	NextForPartner(ctx context.Context, partnerID string) (dto.BookingResponse, error)
 	Accept(ctx context.Context, partnerID, bookingID string) (dto.BookingResponse, error)
 	Reject(ctx context.Context, partnerID, bookingID string) (dto.BookingResponse, error)
 	Update(ctx context.Context, userID, bookingID string, in dto.UpdateBookingRequest) (dto.BookingResponse, error)
@@ -103,17 +105,30 @@ func (h *BookingHandler) GetForPartner(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"booking": booking})
 }
 
-// ListForUser handles GET /api/v1/user/bookings.
+// ListForUser handles GET /api/v1/user/bookings, optionally filtered by
+// ?status=pending|accepted|rejected|cancelled|completed.
 func (h *BookingHandler) ListForUser(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
 
-	result, err := h.svc.ListForUser(c.Request.Context(), c.GetString(middleware.ContextSubjectKey), page, pageSize)
+	result, err := h.svc.ListForUser(c.Request.Context(), c.GetString(middleware.ContextSubjectKey), c.Query("status"), page, pageSize)
 	if err != nil {
 		h.writeServiceError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, result)
+}
+
+// NextForUser handles GET /api/v1/user/bookings/next. It returns the user's
+// next scheduled (accepted) pickup with full details: partner details and the
+// booking's status log history.
+func (h *BookingHandler) NextForUser(c *gin.Context) {
+	booking, err := h.svc.NextForUser(c.Request.Context(), c.GetString(middleware.ContextSubjectKey))
+	if err != nil {
+		h.writeServiceError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"booking": booking})
 }
 
 // ListForPartner handles GET /api/v1/partner/bookings, optionally filtered by
@@ -128,6 +143,18 @@ func (h *BookingHandler) ListForPartner(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, result)
+}
+
+// NextForPartner handles GET /api/v1/partner/bookings/next. It returns the
+// partner's next scheduled (accepted) pickup with full details: the
+// customer's details and the booking's status log history.
+func (h *BookingHandler) NextForPartner(c *gin.Context) {
+	booking, err := h.svc.NextForPartner(c.Request.Context(), c.GetString(middleware.ContextSubjectKey))
+	if err != nil {
+		h.writeServiceError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"booking": booking})
 }
 
 // Accept handles POST /api/v1/partner/bookings/:bookingId/accept.

@@ -20,8 +20,10 @@ type BookingRepository interface {
 	PartnerExists(ctx context.Context, partnerID string) (bool, error)
 	Create(ctx context.Context, booking *model.Booking) error
 	GetByID(ctx context.Context, id string) (model.Booking, error)
-	ListByUser(ctx context.Context, userID string, limit, offset int) ([]model.Booking, int64, error)
+	ListByUser(ctx context.Context, userID string, status model.BookingStatus, limit, offset int) ([]model.Booking, int64, error)
 	ListByPartner(ctx context.Context, partnerID string, status model.BookingStatus, limit, offset int) ([]model.Booking, int64, error)
+	NextForUser(ctx context.Context, userID string) (model.Booking, error)
+	NextForPartner(ctx context.Context, partnerID string) (model.Booking, error)
 	SlotAccepted(ctx context.Context, partnerID, slotDate, slotStartTime string) (bool, error)
 	Accept(ctx context.Context, bookingID, partnerID string) (model.Booking, error)
 	Reject(ctx context.Context, bookingID, partnerID string) (model.Booking, error)
@@ -120,9 +122,14 @@ func (r *GormBookingRepository) GetByID(ctx context.Context, id string) (model.B
 
 // ListByUser returns a paginated set of a user's bookings ordered by the
 // nearest slot date/time first, each with its partner and images preloaded.
-func (r *GormBookingRepository) ListByUser(ctx context.Context, userID string, limit, offset int) ([]model.Booking, int64, error) {
+// An empty status returns all states.
+func (r *GormBookingRepository) ListByUser(ctx context.Context, userID string, status model.BookingStatus, limit, offset int) ([]model.Booking, int64, error) {
 	base := func(db *gorm.DB) *gorm.DB {
-		return db.Model(&model.Booking{}).Where("user_id = ?", userID)
+		db = db.Model(&model.Booking{}).Where("user_id = ?", userID)
+		if status != "" {
+			db = db.Where("status = ?", status)
+		}
+		return db
 	}
 
 	var total int64
@@ -171,6 +178,47 @@ func (r *GormBookingRepository) ListByPartner(ctx context.Context, partnerID str
 		return nil, 0, fmt.Errorf("list partner bookings: %w", err)
 	}
 	return bookings, total, nil
+}
+
+// NextForUser returns a user's next scheduled (accepted) pickup, the one with
+// the nearest slot date/time, with its user, partner and images preloaded. It
+// returns utils.ErrNotFound when the user has no accepted bookings.
+func (r *GormBookingRepository) NextForUser(ctx context.Context, userID string) (model.Booking, error) {
+	var booking model.Booking
+	if err := r.db.WithContext(ctx).
+		Preload("User").
+		Preload("Partner").
+		Preload("Images", func(db *gorm.DB) *gorm.DB { return db.Order("sequence ASC") }).
+		Where("user_id = ? AND status = ?", userID, model.BookingAccepted).
+		Order("slot_date ASC, slot_start_time ASC").
+		First(&booking).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return model.Booking{}, utils.ErrNotFound
+		}
+		return model.Booking{}, fmt.Errorf("next user booking: %w", err)
+	}
+	return booking, nil
+}
+
+// NextForPartner returns a partner's next scheduled (accepted) pickup, the
+// one with the nearest slot date/time, with the requesting user, partner and
+// images preloaded. It returns utils.ErrNotFound when the partner has no
+// accepted bookings.
+func (r *GormBookingRepository) NextForPartner(ctx context.Context, partnerID string) (model.Booking, error) {
+	var booking model.Booking
+	if err := r.db.WithContext(ctx).
+		Preload("User").
+		Preload("Partner").
+		Preload("Images", func(db *gorm.DB) *gorm.DB { return db.Order("sequence ASC") }).
+		Where("partner_id = ? AND status = ?", partnerID, model.BookingAccepted).
+		Order("slot_date ASC, slot_start_time ASC").
+		First(&booking).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return model.Booking{}, utils.ErrNotFound
+		}
+		return model.Booking{}, fmt.Errorf("next partner booking: %w", err)
+	}
+	return booking, nil
 }
 
 // SlotAccepted reports whether the partner already has an accepted booking for

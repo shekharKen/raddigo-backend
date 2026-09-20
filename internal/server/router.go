@@ -77,6 +77,7 @@ func NewRouter(
 
 			users.POST("/bookings", middleware.RequireUserRole(), booking.Create)
 			users.GET("/bookings", middleware.RequireUserRole(), booking.ListForUser)
+			users.GET("/bookings/next", middleware.RequireUserRole(), booking.NextForUser)
 			users.GET("/bookings/:bookingId", middleware.RequireUserRole(), booking.GetForUser)
 			users.PUT("/bookings/:bookingId", middleware.RequireUserRole(), booking.Update)
 			users.POST("/bookings/:bookingId/cancel", middleware.RequireUserRole(), booking.Cancel)
@@ -95,6 +96,7 @@ func NewRouter(
 			partners.GET("/:partnerId/rating-summary", rating.SummaryForPartner)
 
 			partners.GET("/bookings", middleware.RequirePartnerRole(), booking.ListForPartner)
+			partners.GET("/bookings/next", middleware.RequirePartnerRole(), booking.NextForPartner)
 			partners.GET("/bookings/:bookingId", middleware.RequirePartnerRole(), booking.GetForPartner)
 			partners.POST("/bookings/:bookingId/accept", middleware.RequirePartnerRole(), booking.Accept)
 			partners.POST("/bookings/:bookingId/reject", middleware.RequirePartnerRole(), booking.Reject)
