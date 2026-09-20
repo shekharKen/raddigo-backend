@@ -15,32 +15,35 @@ import (
 
 // Repositories groups the data-access layer.
 type Repositories struct {
-	User    repository.UserRepository
-	Partner repository.PartnerRepository
-	Address repository.AddressRepository
-	Rating  repository.RatingRepository
-	Booking repository.BookingRepository
+	User         repository.UserRepository
+	Partner      repository.PartnerRepository
+	Address      repository.AddressRepository
+	Rating       repository.RatingRepository
+	Booking      repository.BookingRepository
+	Subscription repository.SubscriptionRepository
 }
 
 // Services groups the business-logic layer.
 type Services struct {
-	User    *service.UserService
-	Partner *service.PartnerService
-	Address *service.AddressService
-	Rating  *service.RatingService
-	Booking *service.BookingService
-	Auth    *service.AuthService
+	User         *service.UserService
+	Partner      *service.PartnerService
+	Address      *service.AddressService
+	Rating       *service.RatingService
+	Booking      *service.BookingService
+	Auth         *service.AuthService
+	Subscription *service.SubscriptionService
 }
 
 // Handlers groups the HTTP layer.
 type Handlers struct {
-	Health  *handler.HealthHandler
-	Auth    *handler.AuthHandler
-	Partner *handler.PartnerHandler
-	Address *handler.AddressHandler
-	Rating  *handler.RatingHandler
-	Booking *handler.BookingHandler
-	Profile *handler.ProfileHandler
+	Health       *handler.HealthHandler
+	Auth         *handler.AuthHandler
+	Partner      *handler.PartnerHandler
+	Address      *handler.AddressHandler
+	Rating       *handler.RatingHandler
+	Booking      *handler.BookingHandler
+	Profile      *handler.ProfileHandler
+	Subscription *handler.SubscriptionHandler
 }
 
 // Container holds the fully wired application dependencies.
@@ -70,33 +73,36 @@ func New(cfg config.Config, logger *slog.Logger, db *gorm.DB) *Container {
 
 func buildRepositories(db *gorm.DB) Repositories {
 	return Repositories{
-		User:    repository.NewGormUserRepository(db),
-		Partner: repository.NewGormPartnerRepository(db),
-		Address: repository.NewGormAddressRepository(db),
-		Rating:  repository.NewGormRatingRepository(db),
-		Booking: repository.NewGormBookingRepository(db),
+		User:         repository.NewGormUserRepository(db),
+		Partner:      repository.NewGormPartnerRepository(db),
+		Address:      repository.NewGormAddressRepository(db),
+		Rating:       repository.NewGormRatingRepository(db),
+		Booking:      repository.NewGormBookingRepository(db),
+		Subscription: repository.NewGormSubscriptionRepository(db),
 	}
 }
 
 func buildServices(cfg config.Config, repos Repositories, mail mailer.Mailer, tokens *auth.TokenService) Services {
 	return Services{
-		User:    service.NewUserService(repos.User, mail, cfg.DevOTP, cfg.AppBaseURL),
-		Partner: service.NewPartnerService(repos.Partner, repos.Rating, mail, cfg.SlotDuration, cfg.DevOTP, cfg.AppBaseURL),
-		Address: service.NewAddressService(repos.Address),
-		Rating:  service.NewRatingService(repos.Rating),
-		Booking: service.NewBookingService(repos.Booking, repos.Partner, repos.Rating, cfg.SlotDuration, cfg.AppBaseURL, mail, cfg.DevOTP),
-		Auth:    service.NewAuthService(repos.User, repos.Partner, tokens),
+		User:         service.NewUserService(repos.User, mail, cfg.DevOTP, cfg.AppBaseURL),
+		Partner:      service.NewPartnerService(repos.Partner, repos.Rating, mail, cfg.SlotDuration, cfg.DevOTP, cfg.AppBaseURL),
+		Address:      service.NewAddressService(repos.Address),
+		Rating:       service.NewRatingService(repos.Rating),
+		Booking:      service.NewBookingService(repos.Booking, repos.Partner, repos.Rating, cfg.SlotDuration, cfg.AppBaseURL, mail, cfg.DevOTP),
+		Auth:         service.NewAuthService(repos.User, repos.Partner, repos.Subscription, tokens),
+		Subscription: service.NewSubscriptionService(repos.Subscription, cfg.MonthlySubscriptionPrice, cfg.AnnualSubscriptionPrice),
 	}
 }
 
 func buildHandlers(cfg config.Config, services Services) Handlers {
 	return Handlers{
-		Health:  handler.NewHealthHandler(),
-		Auth:    handler.NewAuthHandler(services.User, services.Auth),
-		Partner: handler.NewPartnerHandler(services.Partner, services.Auth),
-		Address: handler.NewAddressHandler(services.Address),
-		Rating:  handler.NewRatingHandler(services.Rating),
-		Booking: handler.NewBookingHandler(services.Booking, cfg.UploadDir),
-		Profile: handler.NewProfileHandler(services.User, services.Partner, cfg.UploadDir),
+		Health:       handler.NewHealthHandler(),
+		Auth:         handler.NewAuthHandler(services.User, services.Auth),
+		Partner:      handler.NewPartnerHandler(services.Partner, services.Auth),
+		Address:      handler.NewAddressHandler(services.Address),
+		Rating:       handler.NewRatingHandler(services.Rating),
+		Booking:      handler.NewBookingHandler(services.Booking, cfg.UploadDir),
+		Profile:      handler.NewProfileHandler(services.User, services.Partner, cfg.UploadDir),
+		Subscription: handler.NewSubscriptionHandler(services.Subscription),
 	}
 }

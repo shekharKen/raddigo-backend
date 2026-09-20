@@ -14,14 +14,15 @@ import (
 
 // AuthService issues and refreshes JWT tokens for users and partners.
 type AuthService struct {
-	users    repository.UserRepository
-	partners repository.PartnerRepository
-	tokens   *auth.TokenService
+	users         repository.UserRepository
+	partners      repository.PartnerRepository
+	subscriptions repository.SubscriptionRepository
+	tokens        *auth.TokenService
 }
 
 // NewAuthService creates an AuthService.
-func NewAuthService(users repository.UserRepository, partners repository.PartnerRepository, tokens *auth.TokenService) *AuthService {
-	return &AuthService{users: users, partners: partners, tokens: tokens}
+func NewAuthService(users repository.UserRepository, partners repository.PartnerRepository, subscriptions repository.SubscriptionRepository, tokens *auth.TokenService) *AuthService {
+	return &AuthService{users: users, partners: partners, subscriptions: subscriptions, tokens: tokens}
 }
 
 // LoginUser authenticates a user by email/password and issues a token pair.
@@ -74,8 +75,18 @@ func (s *AuthService) LoginPartner(ctx context.Context, in dto.LoginRequest) (dt
 		return dto.AuthResponse{}, err
 	}
 
-	pair.Info = partner
+	subscribed, err := s.PartnerSubscribed(ctx, partner.ID)
+	if err != nil {
+		return dto.AuthResponse{}, err
+	}
+	pair.Info = dto.PartnerAuthInfo{Partner: partner, IsSubscribed: subscribed}
 	return pair, nil
+}
+
+// PartnerSubscribed reports whether a partner currently has an active
+// subscription. Used to enrich partner login and register responses.
+func (s *AuthService) PartnerSubscribed(ctx context.Context, partnerID string) (bool, error) {
+	return s.subscriptions.HasActive(ctx, partnerID)
 }
 
 // Refresh validates a refresh token and issues a new token pair for the same

@@ -20,6 +20,7 @@ func NewRouter(
 	rating *handler.RatingHandler,
 	booking *handler.BookingHandler,
 	profile *handler.ProfileHandler,
+	subscription *handler.SubscriptionHandler,
 	authenticate gin.HandlerFunc,
 	publicDir string,
 ) http.Handler {
@@ -103,6 +104,12 @@ func NewRouter(
 			partners.POST("/bookings/:bookingId/send-otp", middleware.RequirePartnerRole(), booking.SendOTP)
 			partners.POST("/bookings/:bookingId/verify-otp", middleware.RequirePartnerRole(), booking.VerifyOTP)
 			partners.POST("/bookings/:bookingId/complete", middleware.RequirePartnerRole(), booking.Complete)
+
+			partners.POST("/subscription", middleware.RequirePartnerRole(), subscription.Subscribe)
+			partners.GET("/subscription", middleware.RequirePartnerRole(), subscription.GetActive)
+			partners.POST("/subscription/upgrade", middleware.RequirePartnerRole(), subscription.Upgrade)
+			partners.GET("/subscription/transactions", middleware.RequirePartnerRole(), subscription.ListTransactions)
+			partners.GET("/subscriptions", middleware.RequirePartnerRole(), subscription.List)
 		}
 	}
 

@@ -2,25 +2,28 @@ package config
 
 import (
 	"os"
+	"strconv"
 	"time"
 )
 
 // Config holds runtime configuration for the application.
 type Config struct {
-	ServerAddr      string
-	ReadTimeout     time.Duration
-	WriteTimeout    time.Duration
-	IdleTimeout     time.Duration
-	ShutdownTimeout time.Duration
-	DatabaseURL     string
-	AppBaseURL      string
-	PublicDir       string
-	UploadDir       string
-	JWTSecret       string
-	AccessTokenTTL  time.Duration
-	RefreshTokenTTL time.Duration
-	SlotDuration    time.Duration
-	DevOTP          string
+	ServerAddr               string
+	ReadTimeout              time.Duration
+	WriteTimeout             time.Duration
+	IdleTimeout              time.Duration
+	ShutdownTimeout          time.Duration
+	DatabaseURL              string
+	AppBaseURL               string
+	PublicDir                string
+	UploadDir                string
+	JWTSecret                string
+	AccessTokenTTL           time.Duration
+	RefreshTokenTTL          time.Duration
+	SlotDuration             time.Duration
+	DevOTP                   string
+	MonthlySubscriptionPrice float64
+	AnnualSubscriptionPrice  float64
 }
 
 // Load builds a Config from environment variables, falling back to sensible
@@ -42,7 +45,9 @@ func Load() Config {
 		SlotDuration:    getDuration("SLOT_DURATION", 30*time.Minute),
 		// DevOTP, when set, is used as the fixed verification OTP instead of a
 		// random one. Intended for local development only; leave unset in production.
-		DevOTP: getEnv("DEV_OTP", ""),
+		DevOTP:                   getEnv("DEV_OTP", ""),
+		MonthlySubscriptionPrice: getFloat("MONTHLY_SUBSCRIPTION_PRICE", 499),
+		AnnualSubscriptionPrice:  getFloat("ANNUAL_SUBSCRIPTION_PRICE", 4999),
 	}
 }
 
@@ -57,6 +62,15 @@ func getDuration(key string, fallback time.Duration) time.Duration {
 	if v, ok := os.LookupEnv(key); ok {
 		if d, err := time.ParseDuration(v); err == nil {
 			return d
+		}
+	}
+	return fallback
+}
+
+func getFloat(key string, fallback float64) float64 {
+	if v, ok := os.LookupEnv(key); ok {
+		if f, err := strconv.ParseFloat(v, 64); err == nil {
+			return f
 		}
 	}
 	return fallback

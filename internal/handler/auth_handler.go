@@ -28,6 +28,7 @@ type authService interface {
 	Refresh(refreshToken string) (dto.AuthResponse, error)
 	IssueForUser(userID string) (dto.AuthResponse, error)
 	IssueForPartner(partnerID string) (dto.AuthResponse, error)
+	PartnerSubscribed(ctx context.Context, partnerID string) (bool, error)
 }
 
 // AuthHandler exposes authentication-related HTTP handlers.

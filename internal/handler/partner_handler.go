@@ -54,10 +54,17 @@ func (h *PartnerHandler) Register(c *gin.Context) {
 		return
 	}
 
+	subscribed, err := h.auth.PartnerSubscribed(c.Request.Context(), partner.ID)
+	if err != nil {
+		h.writeServiceError(c, err)
+		return
+	}
+
 	c.JSON(http.StatusCreated, gin.H{
-		"message": "registration successful, please check your email to verify your account",
-		"partner": partner,
-		"auth":    tokens,
+		"message":       "registration successful, please check your email to verify your account",
+		"partner":       partner,
+		"is_subscribed": subscribed,
+		"auth":          tokens,
 	})
 }
 

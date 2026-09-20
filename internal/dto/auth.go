@@ -1,5 +1,7 @@
 package dto
 
+import "github.com/raddigo/raddigo/internal/model"
+
 // RegisterRequest is the payload accepted when registering a new user.
 type RegisterRequest struct {
 	FirstName       string           `json:"first_name"`
@@ -66,6 +68,13 @@ type AuthResponse struct {
 	TokenType    string `json:"token_type"`
 	ExpiresIn    int64  `json:"expires_in"`
 	Info         any    `json:"info"`
+}
+
+// PartnerAuthInfo is a partner's profile plus their current subscription
+// status, returned in place of a plain partner in login/register responses.
+type PartnerAuthInfo struct {
+	model.Partner
+	IsSubscribed bool `json:"is_subscribed"`
 }
 
 // UpdateUserProfileRequest is the payload accepted when a user edits their profile.
