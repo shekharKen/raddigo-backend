@@ -116,7 +116,7 @@ func buildServices(cfg config.Config, repos Repositories, mail mailer.Mailer, to
 		Address:      service.NewAddressService(repos.Address),
 		Rating:       service.NewRatingService(repos.Rating),
 		Booking:      service.NewBookingService(repos.Booking, repos.Partner, repos.Rating, cfg.SlotDuration, cfg.AppBaseURL, mail, cfg.DevOTP, notifications),
-		Auth:         service.NewAuthService(repos.User, repos.Partner, repos.Subscription, tokens),
+		Auth:         service.NewAuthService(repos.User, repos.Partner, repos.Subscription, tokens, cfg.AppBaseURL),
 		Subscription: service.NewSubscriptionService(repos.Subscription, cfg.MonthlySubscriptionPrice, cfg.AnnualSubscriptionPrice),
 		Notification: notifications,
 	}

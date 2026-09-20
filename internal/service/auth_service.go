@@ -20,11 +20,14 @@ type AuthService struct {
 	partners      repository.PartnerRepository
 	subscriptions repository.SubscriptionRepository
 	tokens        *auth.TokenService
+	baseURL       string
 }
 
-// NewAuthService creates an AuthService.
-func NewAuthService(users repository.UserRepository, partners repository.PartnerRepository, subscriptions repository.SubscriptionRepository, tokens *auth.TokenService) *AuthService {
-	return &AuthService{users: users, partners: partners, subscriptions: subscriptions, tokens: tokens}
+// NewAuthService creates an AuthService. baseURL is prefixed onto stored
+// relative image paths (e.g. profile images) when returning them in login
+// responses.
+func NewAuthService(users repository.UserRepository, partners repository.PartnerRepository, subscriptions repository.SubscriptionRepository, tokens *auth.TokenService, baseURL string) *AuthService {
+	return &AuthService{users: users, partners: partners, subscriptions: subscriptions, tokens: tokens, baseURL: baseURL}
 }
 
 // LoginUser authenticates a user by email/password and issues a token pair.
@@ -54,6 +57,7 @@ func (s *AuthService) LoginUser(ctx context.Context, in dto.LoginRequest) (dto.A
 		return dto.AuthResponse{}, err
 	}
 
+	user.ProfileImage = resolveImageURL(s.baseURL, user.ProfileImage)
 	pair.Info = user
 	return pair, nil
 }
@@ -89,6 +93,7 @@ func (s *AuthService) LoginPartner(ctx context.Context, in dto.LoginRequest) (dt
 	if err != nil {
 		return dto.AuthResponse{}, err
 	}
+	partner.ProfileImage = resolveImageURL(s.baseURL, partner.ProfileImage)
 	pair.Info = dto.PartnerAuthInfo{Partner: partner, IsSubscribed: subscribed}
 	return pair, nil
 }
