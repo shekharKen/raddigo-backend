@@ -64,9 +64,13 @@ func (s *NotificationService) BookingRejected(ctx context.Context, booking model
 	if booking.User == nil {
 		return
 	}
+	body := "Your pickup request has been rejected."
+	if booking.Reason != nil && *booking.Reason != "" {
+		body = fmt.Sprintf("%s Reason: %s", body, *booking.Reason)
+	}
 	s.notify(ctx, booking.UserID, model.NotificationRecipientUser, booking.User.FCMToken,
 		model.NotificationBookingRejected, "Booking rejected",
-		"Your pickup request has been rejected.", booking.ID)
+		body, booking.ID)
 }
 
 // BookingCancelled notifies the partner that the user cancelled the booking.
@@ -74,9 +78,13 @@ func (s *NotificationService) BookingCancelled(ctx context.Context, booking mode
 	if booking.Partner == nil {
 		return
 	}
+	body := "The customer cancelled their pickup request."
+	if booking.Reason != nil && *booking.Reason != "" {
+		body = fmt.Sprintf("%s Reason: %s", body, *booking.Reason)
+	}
 	s.notify(ctx, booking.PartnerID, model.NotificationRecipientPartner, booking.Partner.FCMToken,
 		model.NotificationBookingCancelled, "Booking cancelled",
-		"The customer cancelled their pickup request.", booking.ID)
+		body, booking.ID)
 }
 
 // BookingCompleted notifies the user that their booking was completed.

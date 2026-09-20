@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"errors"
+	"io"
 	"net/http"
 	"strconv"
 
@@ -23,9 +24,9 @@ type bookingService interface {
 	NextForUser(ctx context.Context, userID string) (dto.BookingResponse, error)
 	NextForPartner(ctx context.Context, partnerID string) (dto.BookingResponse, error)
 	Accept(ctx context.Context, partnerID, bookingID string) (dto.BookingResponse, error)
-	Reject(ctx context.Context, partnerID, bookingID string) (dto.BookingResponse, error)
+	Reject(ctx context.Context, partnerID, bookingID, reason string) (dto.BookingResponse, error)
 	Update(ctx context.Context, userID, bookingID string, in dto.UpdateBookingRequest) (dto.BookingResponse, error)
-	Cancel(ctx context.Context, userID, bookingID string) (dto.BookingResponse, error)
+	Cancel(ctx context.Context, userID, bookingID, reason string) (dto.BookingResponse, error)
 	SendOTP(ctx context.Context, partnerID, bookingID string) (dto.BookingResponse, error)
 	VerifyOTP(ctx context.Context, partnerID, bookingID string, in dto.VerifyBookingOTPRequest) (dto.BookingResponse, error)
 	Complete(ctx context.Context, partnerID, bookingID string, in dto.CompleteBookingRequest) (dto.BookingResponse, error)
@@ -189,9 +190,16 @@ func (h *BookingHandler) Accept(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"booking": booking})
 }
 
-// Reject handles POST /api/v1/partner/bookings/:bookingId/reject.
+// Reject handles POST /api/v1/partner/bookings/:bookingId/reject. The
+// request body is optional JSON, e.g. {"reason": "..."}.
 func (h *BookingHandler) Reject(c *gin.Context) {
-	booking, err := h.svc.Reject(c.Request.Context(), c.GetString(middleware.ContextSubjectKey), c.Param("bookingId"))
+	var in dto.RejectBookingRequest
+	if err := c.ShouldBindJSON(&in); err != nil && !errors.Is(err, io.EOF) {
+		c.JSON(http.StatusBadRequest, utils.ErrorResponse{Error: "invalid request body"})
+		return
+	}
+
+	booking, err := h.svc.Reject(c.Request.Context(), c.GetString(middleware.ContextSubjectKey), c.Param("bookingId"), in.Reason)
 	if err != nil {
 		h.writeServiceError(c, err)
 		return
@@ -241,9 +249,16 @@ func (h *BookingHandler) Update(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"booking": booking})
 }
 
-// Cancel handles POST /api/v1/user/bookings/:bookingId/cancel.
+// Cancel handles POST /api/v1/user/bookings/:bookingId/cancel. The request
+// body is optional JSON, e.g. {"reason": "..."}.
 func (h *BookingHandler) Cancel(c *gin.Context) {
-	booking, err := h.svc.Cancel(c.Request.Context(), c.GetString(middleware.ContextSubjectKey), c.Param("bookingId"))
+	var in dto.CancelBookingRequest
+	if err := c.ShouldBindJSON(&in); err != nil && !errors.Is(err, io.EOF) {
+		c.JSON(http.StatusBadRequest, utils.ErrorResponse{Error: "invalid request body"})
+		return
+	}
+
+	booking, err := h.svc.Cancel(c.Request.Context(), c.GetString(middleware.ContextSubjectKey), c.Param("bookingId"), in.Reason)
 	if err != nil {
 		h.writeServiceError(c, err)
 		return

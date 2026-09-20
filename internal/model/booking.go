@@ -31,8 +31,11 @@ type Booking struct {
 	Images          []BookingImage `json:"images,omitempty" gorm:"foreignKey:BookingID;constraint:OnDelete:CASCADE"`
 	Description     string         `json:"description"`
 	Note            string         `json:"note"`
-	User            *User          `json:"user,omitempty" gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE"`
-	Partner         *Partner       `json:"partner,omitempty" gorm:"foreignKey:PartnerID;constraint:OnDelete:CASCADE"`
+	// Reason is the optional explanation given when the booking is rejected by
+	// the partner or cancelled by the user.
+	Reason  *string  `json:"reason,omitempty"`
+	User    *User    `json:"user,omitempty" gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE"`
+	Partner *Partner `json:"partner,omitempty" gorm:"foreignKey:PartnerID;constraint:OnDelete:CASCADE"`
 
 	// Completion OTP: generated and sent to the user via the send-otp endpoint
 	// once a booking is accepted, then read back by the partner to confirm

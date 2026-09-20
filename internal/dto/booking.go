@@ -48,6 +48,18 @@ type VerifyBookingOTPRequest struct {
 	OTP string `json:"otp"`
 }
 
+// RejectBookingRequest is the payload accepted when a partner rejects a
+// pending booking. Reason is optional.
+type RejectBookingRequest struct {
+	Reason string `json:"reason"`
+}
+
+// CancelBookingRequest is the payload accepted when a user cancels a pending
+// or accepted booking. Reason is optional.
+type CancelBookingRequest struct {
+	Reason string `json:"reason"`
+}
+
 // CompleteBookingRequest is the payload accepted when a partner completes an
 // accepted booking. It is submitted as multipart/form-data so the
 // completion scrap images can be sent alongside the weight and amount paid;
@@ -84,19 +96,22 @@ type BookingPartner struct {
 
 // BookingResponse is the API representation of a stored booking.
 type BookingResponse struct {
-	ID              string          `json:"id"`
-	Status          string          `json:"status"`
-	SlotDate        string          `json:"slot_date"`
-	SlotStartTime   string          `json:"slot_start_time"`
-	SlotEndTime     string          `json:"slot_end_time"`
-	PickupLatitude  float64         `json:"pickup_latitude"`
-	PickupLongitude float64         `json:"pickup_longitude"`
-	PickupAddress   string          `json:"pickup_address"`
-	Images          []string        `json:"images"`
-	Description     string          `json:"description"`
-	Note            string          `json:"note"`
-	User            *BookingUser    `json:"user,omitempty"`
-	Partner         *BookingPartner `json:"partner,omitempty"`
+	ID              string   `json:"id"`
+	Status          string   `json:"status"`
+	SlotDate        string   `json:"slot_date"`
+	SlotStartTime   string   `json:"slot_start_time"`
+	SlotEndTime     string   `json:"slot_end_time"`
+	PickupLatitude  float64  `json:"pickup_latitude"`
+	PickupLongitude float64  `json:"pickup_longitude"`
+	PickupAddress   string   `json:"pickup_address"`
+	Images          []string `json:"images"`
+	Description     string   `json:"description"`
+	Note            string   `json:"note"`
+	// Reason is the optional explanation given when the booking was rejected
+	// or cancelled.
+	Reason  *string         `json:"reason,omitempty"`
+	User    *BookingUser    `json:"user,omitempty"`
+	Partner *BookingPartner `json:"partner,omitempty"`
 	// OTPVerified reports whether the completion OTP has been confirmed by the
 	// partner; required before the booking can be completed.
 	OTPVerified      bool      `json:"otp_verified"`

@@ -26,9 +26,9 @@ type BookingRepository interface {
 	NextForPartner(ctx context.Context, partnerID string) (model.Booking, error)
 	SlotAccepted(ctx context.Context, partnerID, slotDate, slotStartTime string) (bool, error)
 	Accept(ctx context.Context, bookingID, partnerID string) (model.Booking, error)
-	Reject(ctx context.Context, bookingID, partnerID string) (model.Booking, error)
+	Reject(ctx context.Context, bookingID, partnerID, reason string) (model.Booking, error)
 	Update(ctx context.Context, bookingID, userID string, in BookingUpdateInput) (model.Booking, error)
-	Cancel(ctx context.Context, bookingID, userID string) (model.Booking, error)
+	Cancel(ctx context.Context, bookingID, userID, reason string) (model.Booking, error)
 	SendOTP(ctx context.Context, bookingID, partnerID, otp string, otpExpiry time.Time) (model.Booking, error)
 	VerifyOTP(ctx context.Context, bookingID, partnerID, otp string, now time.Time) (model.Booking, error)
 	Complete(ctx context.Context, bookingID, partnerID string, in BookingCompleteInput) (model.Booking, error)
@@ -320,10 +320,10 @@ func (r *GormBookingRepository) Accept(ctx context.Context, bookingID, partnerID
 	return accepted, nil
 }
 
-// Reject transitions a pending booking to rejected. It returns
-// utils.ErrNotFound when the booking does not belong to the partner and
-// utils.ErrInvalidState when it is not pending.
-func (r *GormBookingRepository) Reject(ctx context.Context, bookingID, partnerID string) (model.Booking, error) {
+// Reject transitions a pending booking to rejected, optionally recording the
+// partner's reason. It returns utils.ErrNotFound when the booking does not
+// belong to the partner and utils.ErrInvalidState when it is not pending.
+func (r *GormBookingRepository) Reject(ctx context.Context, bookingID, partnerID, reason string) (model.Booking, error) {
 	var rejected model.Booking
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var booking model.Booking
@@ -340,7 +340,7 @@ func (r *GormBookingRepository) Reject(ctx context.Context, bookingID, partnerID
 		}
 		if err := tx.Model(&model.Booking{}).
 			Where("id = ?", booking.ID).
-			Update("status", model.BookingRejected).Error; err != nil {
+			Updates(map[string]interface{}{"status": model.BookingRejected, "reason": reasonPtr(reason)}).Error; err != nil {
 			return fmt.Errorf("reject booking: %w", err)
 		}
 		if err := insertBookingStatusLog(tx, booking.ID, model.BookingRejected); err != nil {
@@ -431,10 +431,10 @@ func (r *GormBookingRepository) Update(ctx context.Context, bookingID, userID st
 }
 
 // Cancel transitions a pending or accepted booking owned by the user to
-// cancelled. It returns utils.ErrNotFound when the booking does not belong to
-// the user and utils.ErrInvalidState when it has already been rejected or
-// cancelled.
-func (r *GormBookingRepository) Cancel(ctx context.Context, bookingID, userID string) (model.Booking, error) {
+// cancelled, optionally recording the user's reason. It returns
+// utils.ErrNotFound when the booking does not belong to the user and
+// utils.ErrInvalidState when it has already been rejected or cancelled.
+func (r *GormBookingRepository) Cancel(ctx context.Context, bookingID, userID, reason string) (model.Booking, error) {
 	var cancelled model.Booking
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var booking model.Booking
@@ -451,7 +451,7 @@ func (r *GormBookingRepository) Cancel(ctx context.Context, bookingID, userID st
 		}
 		if err := tx.Model(&model.Booking{}).
 			Where("id = ?", booking.ID).
-			Update("status", model.BookingCancelled).Error; err != nil {
+			Updates(map[string]interface{}{"status": model.BookingCancelled, "reason": reasonPtr(reason)}).Error; err != nil {
 			return fmt.Errorf("cancel booking: %w", err)
 		}
 		if err := insertBookingStatusLog(tx, booking.ID, model.BookingCancelled); err != nil {
@@ -716,4 +716,13 @@ func insertBookingStatusLog(tx *gorm.DB, bookingID string, status model.BookingS
 		return fmt.Errorf("create booking status log: %w", err)
 	}
 	return nil
+}
+
+// reasonPtr returns nil for a blank reason so the column is cleared instead of
+// storing an empty string.
+func reasonPtr(reason string) *string {
+	if reason == "" {
+		return nil
+	}
+	return &reason
 }

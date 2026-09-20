@@ -271,9 +271,10 @@ func (s *BookingService) Accept(ctx context.Context, partnerID, bookingID string
 	return s.toBookingResponse(booking), nil
 }
 
-// Reject marks a partner's pending booking as rejected.
-func (s *BookingService) Reject(ctx context.Context, partnerID, bookingID string) (dto.BookingResponse, error) {
-	booking, err := s.repo.Reject(ctx, bookingID, partnerID)
+// Reject marks a partner's pending booking as rejected, optionally recording
+// the partner's reason.
+func (s *BookingService) Reject(ctx context.Context, partnerID, bookingID, reason string) (dto.BookingResponse, error) {
+	booking, err := s.repo.Reject(ctx, bookingID, partnerID, strings.TrimSpace(reason))
 	if err != nil {
 		return dto.BookingResponse{}, err
 	}
@@ -325,9 +326,10 @@ func (s *BookingService) Update(ctx context.Context, userID, bookingID string, i
 	return s.toBookingResponse(updated), nil
 }
 
-// Cancel marks a user's pending or accepted booking as cancelled.
-func (s *BookingService) Cancel(ctx context.Context, userID, bookingID string) (dto.BookingResponse, error) {
-	booking, err := s.repo.Cancel(ctx, bookingID, userID)
+// Cancel marks a user's pending or accepted booking as cancelled, optionally
+// recording the user's reason.
+func (s *BookingService) Cancel(ctx context.Context, userID, bookingID, reason string) (dto.BookingResponse, error) {
+	booking, err := s.repo.Cancel(ctx, bookingID, userID, strings.TrimSpace(reason))
 	if err != nil {
 		return dto.BookingResponse{}, err
 	}
@@ -506,6 +508,7 @@ func (s *BookingService) toBookingResponse(b model.Booking) dto.BookingResponse 
 		Images:          images,
 		Description:     b.Description,
 		Note:            b.Note,
+		Reason:          b.Reason,
 		OTPVerified:     b.OTPVerifiedAt != nil,
 		Weight:          b.Weight,
 		WeightUnit:      b.WeightUnit,
