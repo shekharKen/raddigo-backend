@@ -53,10 +53,10 @@ type VerifyBookingOTPRequest struct {
 // completion scrap images can be sent alongside the weight and amount paid;
 // Images is populated by the handler after the uploaded files are stored.
 type CompleteBookingRequest struct {
-	WeightKg    int      `json:"weight_kg"`
-	WeightGrams int      `json:"weight_grams"`
-	AmountPaid  float64  `json:"amount_paid"`
-	Images      []string `json:"-"`
+	Weight     float64  `json:"weight"`
+	WeightUnit string   `json:"weight_unit"`
+	AmountPaid float64  `json:"amount_paid"`
+	Images     []string `json:"-"`
 }
 
 // BookingUser is the limited set of user details exposed to a partner on a
@@ -100,8 +100,8 @@ type BookingResponse struct {
 	// OTPVerified reports whether the completion OTP has been confirmed by the
 	// partner; required before the booking can be completed.
 	OTPVerified      bool      `json:"otp_verified"`
-	WeightKg         *int      `json:"weight_kg,omitempty"`
-	WeightGrams      *int      `json:"weight_grams,omitempty"`
+	Weight           *float64  `json:"weight,omitempty"`
+	WeightUnit       *string   `json:"weight_unit,omitempty"`
 	AmountPaid       *float64  `json:"amount_paid,omitempty"`
 	CompletionImages []string  `json:"completion_images,omitempty"`
 	CreatedAt        time.Time `json:"created_at"`

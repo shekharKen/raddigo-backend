@@ -23,10 +23,11 @@ type BookingRepository interface {
 	ListByUser(ctx context.Context, userID string, limit, offset int) ([]model.Booking, int64, error)
 	ListByPartner(ctx context.Context, partnerID string, status model.BookingStatus, limit, offset int) ([]model.Booking, int64, error)
 	SlotAccepted(ctx context.Context, partnerID, slotDate, slotStartTime string) (bool, error)
-	Accept(ctx context.Context, bookingID, partnerID, otp string, otpExpiry time.Time) (model.Booking, error)
+	Accept(ctx context.Context, bookingID, partnerID string) (model.Booking, error)
 	Reject(ctx context.Context, bookingID, partnerID string) (model.Booking, error)
 	Update(ctx context.Context, bookingID, userID string, in BookingUpdateInput) (model.Booking, error)
 	Cancel(ctx context.Context, bookingID, userID string) (model.Booking, error)
+	SendOTP(ctx context.Context, bookingID, partnerID, otp string, otpExpiry time.Time) (model.Booking, error)
 	VerifyOTP(ctx context.Context, bookingID, partnerID, otp string, now time.Time) (model.Booking, error)
 	Complete(ctx context.Context, bookingID, partnerID string, in BookingCompleteInput) (model.Booking, error)
 	ListStatusLogs(ctx context.Context, bookingID string) ([]model.BookingStatusLog, error)
@@ -35,10 +36,10 @@ type BookingRepository interface {
 // BookingCompleteInput carries the completion details a partner submits to
 // finish an accepted booking.
 type BookingCompleteInput struct {
-	WeightKg    int
-	WeightGrams int
-	AmountPaid  float64
-	Images      []model.BookingCompletionImage
+	Weight     float64
+	WeightUnit string
+	AmountPaid float64
+	Images     []model.BookingCompletionImage
 }
 
 // BookingUpdateInput carries the mutable fields of a booking update. A nil
@@ -186,14 +187,12 @@ func (r *GormBookingRepository) SlotAccepted(ctx context.Context, partnerID, slo
 	return count > 0, nil
 }
 
-// Accept transitions a pending booking to accepted, stores a freshly
-// generated completion OTP (with expiry) for the caller to send to the
-// customer, and rejects any other pending bookings competing for the same
-// slot, all within a transaction. It returns utils.ErrNotFound when the
-// booking does not belong to the partner, utils.ErrInvalidState when it is
-// not pending, and utils.ErrSlotUnavailable when the slot has already been
-// taken.
-func (r *GormBookingRepository) Accept(ctx context.Context, bookingID, partnerID, otp string, otpExpiry time.Time) (model.Booking, error) {
+// Accept transitions a pending booking to accepted and rejects any other
+// pending bookings competing for the same slot, all within a transaction. It
+// returns utils.ErrNotFound when the booking does not belong to the partner,
+// utils.ErrInvalidState when it is not pending, and utils.ErrSlotUnavailable
+// when the slot has already been taken.
+func (r *GormBookingRepository) Accept(ctx context.Context, bookingID, partnerID string) (model.Booking, error) {
 	var accepted model.Booking
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var booking model.Booking
@@ -220,15 +219,9 @@ func (r *GormBookingRepository) Accept(ctx context.Context, bookingID, partnerID
 			return utils.ErrSlotUnavailable
 		}
 
-		fields := map[string]interface{}{
-			"status":                model.BookingAccepted,
-			"completion_otp":        otp,
-			"completion_otp_expiry": otpExpiry,
-			"otp_verified_at":       nil,
-		}
 		if err := tx.Model(&model.Booking{}).
 			Where("id = ?", booking.ID).
-			Updates(fields).Error; err != nil {
+			Update("status", model.BookingAccepted).Error; err != nil {
 			return fmt.Errorf("accept booking: %w", err)
 		}
 
@@ -408,6 +401,48 @@ func (r *GormBookingRepository) Cancel(ctx context.Context, bookingID, userID st
 	return cancelled, nil
 }
 
+// SendOTP generates and stores a fresh completion OTP (with expiry) on an
+// accepted booking for the caller to email to the customer. It returns
+// utils.ErrNotFound when the booking does not belong to the partner and
+// utils.ErrInvalidState when it is not accepted.
+func (r *GormBookingRepository) SendOTP(ctx context.Context, bookingID, partnerID, otp string, otpExpiry time.Time) (model.Booking, error) {
+	var updated model.Booking
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var booking model.Booking
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("id = ? AND partner_id = ?", bookingID, partnerID).
+			First(&booking).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return utils.ErrNotFound
+			}
+			return fmt.Errorf("load booking: %w", err)
+		}
+		if booking.Status != model.BookingAccepted {
+			return utils.ErrInvalidState
+		}
+		fields := map[string]interface{}{
+			"completion_otp":        otp,
+			"completion_otp_expiry": otpExpiry,
+			"otp_verified_at":       nil,
+		}
+		if err := tx.Model(&model.Booking{}).
+			Where("id = ?", booking.ID).
+			Updates(fields).Error; err != nil {
+			return fmt.Errorf("send otp: %w", err)
+		}
+		if err := tx.Preload("User").Preload("Partner").
+			Preload("Images", func(db *gorm.DB) *gorm.DB { return db.Order("sequence ASC") }).
+			Where("id = ?", booking.ID).First(&updated).Error; err != nil {
+			return fmt.Errorf("reload booking: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return model.Booking{}, err
+	}
+	return updated, nil
+}
+
 // VerifyOTP confirms the completion OTP a partner reads back from the
 // customer, marking it verified so the booking can then be completed. It
 // returns utils.ErrNotFound when the booking does not belong to the partner,
@@ -479,10 +514,10 @@ func (r *GormBookingRepository) Complete(ctx context.Context, bookingID, partner
 			return utils.ErrOTPNotVerified
 		}
 		fields := map[string]interface{}{
-			"status":       model.BookingCompleted,
-			"weight_kg":    in.WeightKg,
-			"weight_grams": in.WeightGrams,
-			"amount_paid":  in.AmountPaid,
+			"status":      model.BookingCompleted,
+			"weight":      in.Weight,
+			"weight_unit": in.WeightUnit,
+			"amount_paid": in.AmountPaid,
 		}
 		if err := tx.Model(&model.Booking{}).
 			Where("id = ?", booking.ID).

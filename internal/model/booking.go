@@ -34,17 +34,17 @@ type Booking struct {
 	User            *User          `json:"user,omitempty" gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE"`
 	Partner         *Partner       `json:"partner,omitempty" gorm:"foreignKey:PartnerID;constraint:OnDelete:CASCADE"`
 
-	// Completion OTP: generated and sent to the user when the partner accepts
-	// the booking, then read back by the partner to confirm they are handing
-	// off to the right customer before the booking can be completed.
+	// Completion OTP: generated and sent to the user via the send-otp endpoint
+	// once a booking is accepted, then read back by the partner to confirm
+	// they are handing off to the right customer before it can be completed.
 	CompletionOTP       string     `json:"-" gorm:"type:varchar(10)"`
 	CompletionOTPExpiry time.Time  `json:"-"`
 	OTPVerifiedAt       *time.Time `json:"-"`
 
 	// Completion details, filled in by the partner (alongside OTP verification)
 	// once the scrap has been collected and weighed.
-	WeightKg         *int                     `json:"weight_kg,omitempty"`
-	WeightGrams      *int                     `json:"weight_grams,omitempty"`
+	Weight           *float64                 `json:"weight,omitempty"`
+	WeightUnit       *string                  `json:"weight_unit,omitempty"`
 	AmountPaid       *float64                 `json:"amount_paid,omitempty"`
 	CompletionImages []BookingCompletionImage `json:"completion_images,omitempty" gorm:"foreignKey:BookingID;constraint:OnDelete:CASCADE"`
 

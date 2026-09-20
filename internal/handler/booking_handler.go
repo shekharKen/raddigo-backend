@@ -24,6 +24,7 @@ type bookingService interface {
 	Reject(ctx context.Context, partnerID, bookingID string) (dto.BookingResponse, error)
 	Update(ctx context.Context, userID, bookingID string, in dto.UpdateBookingRequest) (dto.BookingResponse, error)
 	Cancel(ctx context.Context, userID, bookingID string) (dto.BookingResponse, error)
+	SendOTP(ctx context.Context, partnerID, bookingID string) (dto.BookingResponse, error)
 	VerifyOTP(ctx context.Context, partnerID, bookingID string, in dto.VerifyBookingOTPRequest) (dto.BookingResponse, error)
 	Complete(ctx context.Context, partnerID, bookingID string, in dto.CompleteBookingRequest) (dto.BookingResponse, error)
 }
@@ -201,6 +202,18 @@ func (h *BookingHandler) Cancel(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"booking": booking})
 }
 
+// SendOTP handles POST /api/v1/partner/bookings/:bookingId/send-otp. It
+// generates and emails a fresh completion OTP to the customer for an
+// accepted booking, for the partner to read back later via VerifyOTP.
+func (h *BookingHandler) SendOTP(c *gin.Context) {
+	booking, err := h.svc.SendOTP(c.Request.Context(), c.GetString(middleware.ContextSubjectKey), c.Param("bookingId"))
+	if err != nil {
+		h.writeServiceError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"booking": booking})
+}
+
 // VerifyOTP handles POST /api/v1/partner/bookings/:bookingId/verify-otp. The
 // partner submits the OTP read back from the customer to confirm the handoff;
 // this must succeed before Complete will accept the booking's completion
@@ -226,16 +239,12 @@ func (h *BookingHandler) VerifyOTP(c *gin.Context) {
 // scrap's weight and the amount paid to the customer. The booking's
 // completion OTP must have already been verified via VerifyOTP.
 func (h *BookingHandler) Complete(c *gin.Context) {
-	weightKg, err := strconv.Atoi(c.PostForm("weight_kg"))
+	weight, err := strconv.ParseFloat(c.PostForm("weight"), 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, utils.ErrorResponse{Error: "weight_kg is required and must be a whole number"})
+		c.JSON(http.StatusBadRequest, utils.ErrorResponse{Error: "weight is required and must be a number"})
 		return
 	}
-	weightGrams, err := strconv.Atoi(c.PostForm("weight_grams"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, utils.ErrorResponse{Error: "weight_grams is required and must be a whole number"})
-		return
-	}
+	weightUnit := c.PostForm("weight_unit")
 	amountPaid, err := strconv.ParseFloat(c.PostForm("amount_paid"), 64)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, utils.ErrorResponse{Error: "amount_paid is required and must be a number"})
@@ -248,10 +257,10 @@ func (h *BookingHandler) Complete(c *gin.Context) {
 	}
 
 	in := dto.CompleteBookingRequest{
-		WeightKg:    weightKg,
-		WeightGrams: weightGrams,
-		AmountPaid:  amountPaid,
-		Images:      imageURLs,
+		Weight:     weight,
+		WeightUnit: weightUnit,
+		AmountPaid: amountPaid,
+		Images:     imageURLs,
 	}
 
 	booking, err := h.svc.Complete(c.Request.Context(), c.GetString(middleware.ContextSubjectKey), c.Param("bookingId"), in)

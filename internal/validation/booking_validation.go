@@ -18,9 +18,11 @@ const (
 	maxPickupAddressLength      = 500
 	bookingDateLayout           = "2006-01-02"
 	bookingTimeLayout           = "15:04"
-	maxWeightGrams              = 999
 	maxAmountPaid               = 10_000_000
 )
+
+// bookingWeightUnits are the accepted units for a booking's completion weight.
+var bookingWeightUnits = map[string]bool{"kg": true, "gram": true}
 
 // ValidateCreateBooking validates a booking request, returning a
 // utils.ValidationError describing the first field that fails. Slot alignment
@@ -141,14 +143,11 @@ func ValidateCompleteBooking(in dto.CompleteBookingRequest) error {
 	if len(in.Images) > dto.MaxCompletionImages {
 		return utils.NewValidationError(fmt.Sprintf("too many images: up to %d allowed", dto.MaxCompletionImages))
 	}
-	if in.WeightKg < 0 {
-		return utils.NewValidationError("weight_kg is invalid: must not be negative")
+	if in.Weight <= 0 {
+		return utils.NewValidationError("weight is required and must be greater than zero")
 	}
-	if in.WeightGrams < 0 || in.WeightGrams > maxWeightGrams {
-		return utils.NewValidationError(fmt.Sprintf("weight_grams is invalid: must be between 0 and %d", maxWeightGrams))
-	}
-	if in.WeightKg == 0 && in.WeightGrams == 0 {
-		return utils.NewValidationError("weight is required: weight_kg and weight_grams must not both be zero")
+	if !bookingWeightUnits[strings.ToLower(strings.TrimSpace(in.WeightUnit))] {
+		return utils.NewValidationError("weight_unit is invalid: must be 'kg' or 'gram'")
 	}
 	if in.AmountPaid < 0 || in.AmountPaid > maxAmountPaid {
 		return utils.NewValidationError("amount_paid is invalid: must be a non-negative amount")
