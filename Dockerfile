@@ -32,8 +32,13 @@ RUN apk add --no-cache ca-certificates && \
 
 WORKDIR /app
 
-# Copy the whole public folder (static assets, terms page, uploads) and give appuser ownership
-COPY --from=builder --chown=appuser:appuser /app/public ./public
+# Create directories the application needs and give appuser ownership
+RUN mkdir -p /app/public && \
+    chown -R appuser:appuser /app
+
+# Copy the terms and conditions page and static assets (logo, favicon)
+COPY --from=builder --chown=appuser:appuser /app/public/terms.html ./public/terms.html
+COPY --from=builder --chown=appuser:appuser /app/public/assets ./public/assets
 
 # Copy application binary
 COPY --from=builder /raddigo /usr/local/bin/raddigo
