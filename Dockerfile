@@ -32,9 +32,12 @@ RUN apk add --no-cache ca-certificates && \
 
 WORKDIR /app
 
-# Create directories the application needs and give appuser ownership
-RUN mkdir -p /app/public && \
-    chown -R appuser:appuser /app
+# Copy static public assets (terms page, images); uploads are runtime data, not baked into the image
+COPY --from=builder /app/public/assets ./public/assets
+COPY --from=builder /app/public/terms.html ./public/terms.html
+
+# Uploads are created at runtime; give appuser ownership of the whole public tree
+RUN mkdir -p /app/public/uploads && chown -R appuser:appuser /app/public
 
 # Copy application binary
 COPY --from=builder /raddigo /usr/local/bin/raddigo
