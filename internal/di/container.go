@@ -66,7 +66,7 @@ type Container struct {
 // then handlers.
 func New(cfg config.Config, logger *slog.Logger, db *gorm.DB) *Container {
 	repos := buildRepositories(db)
-	mail := mailer.NewLogMailer(logger)
+	mail := buildMailer(cfg, logger)
 	notifier := buildNotifier(cfg, logger)
 	tokens := auth.NewTokenService(cfg.JWTSecret, cfg.AccessTokenTTL, cfg.RefreshTokenTTL)
 	services := buildServices(cfg, repos, mail, tokens, notifier, logger)
@@ -96,6 +96,23 @@ func buildNotifier(cfg config.Config, logger *slog.Logger) notification.Notifier
 		return notification.NewLogNotifier(logger)
 	}
 	return notifier
+}
+
+// buildMailer returns an SMTPMailer when SMTP credentials are configured,
+// falling back to a log-only mailer (e.g. local development) otherwise.
+func buildMailer(cfg config.Config, logger *slog.Logger) mailer.Mailer {
+	if cfg.SMTPHost == "" {
+		logger.Warn("no smtp host configured, emails will only be logged")
+		return mailer.NewLogMailer(logger)
+	}
+	return mailer.NewSMTPMailer(mailer.SMTPConfig{
+		Host:        cfg.SMTPHost,
+		Port:        cfg.SMTPPort,
+		Username:    cfg.SMTPUsername,
+		Password:    cfg.SMTPPassword,
+		FromAddress: cfg.SMTPFromAddress,
+		FromName:    cfg.SMTPFromName,
+	}, logger)
 }
 
 func buildRepositories(db *gorm.DB) Repositories {

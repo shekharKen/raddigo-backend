@@ -27,6 +27,12 @@ type Config struct {
 	FirebaseCredentialsFile  string
 	ReminderCheckInterval    time.Duration
 	ReminderLeadMinutes      int
+	SMTPHost                 string
+	SMTPPort                 int
+	SMTPUsername             string
+	SMTPPassword             string
+	SMTPFromAddress          string
+	SMTPFromName             string
 }
 
 // Load builds a Config from environment variables, falling back to sensible
@@ -55,6 +61,13 @@ func Load() Config {
 		FirebaseCredentialsFile: getEnv("GOOGLE_APPLICATION_CREDENTIALS", ""),
 		ReminderCheckInterval:   getDuration("REMINDER_CHECK_INTERVAL", time.Minute),
 		ReminderLeadMinutes:     getInt("REMINDER_LEAD_MINUTES", 30),
+		// SMTPHost, when unset, falls back to a log-only mailer.
+		SMTPHost:        getEnv("SMTP_HOST", ""),
+		SMTPPort:        getInt("SMTP_PORT", 587),
+		SMTPUsername:    getEnv("SMTP_USERNAME", ""),
+		SMTPPassword:    getEnv("SMTP_PASSWORD", ""),
+		SMTPFromAddress: getEnv("SMTP_FROM_ADDRESS", "support@raddigo.com"),
+		SMTPFromName:    getEnv("SMTP_FROM_NAME", "Raddigo"),
 	}
 }
 

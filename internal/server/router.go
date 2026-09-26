@@ -1,6 +1,7 @@
 package server
 
 import (
+	"fmt"
 	"log/slog"
 	"net/http"
 
@@ -9,6 +10,9 @@ import (
 	"github.com/raddigo/raddigo/internal/handler"
 	"github.com/raddigo/raddigo/internal/middleware"
 )
+
+// appVersion is the current API version reported at the base URL.
+const appVersion = "1.0.0"
 
 // NewRouter builds the application's Gin engine with middleware and routes.
 func NewRouter(
@@ -32,6 +36,20 @@ func NewRouter(
 	router.Use(middleware.Recoverer(logger), middleware.Logger(logger))
 
 	router.GET("/healthz", health.Health)
+
+	// Basic project info for anyone hitting the base URL directly.
+	router.GET("/", func(c *gin.Context) {
+		scheme := "http"
+		if c.Request.TLS != nil {
+			scheme = "https"
+		}
+		c.JSON(http.StatusOK, gin.H{
+			"name":        "Raddigo",
+			"description": "REST API connecting users with home-service partners for bookings, ratings, and subscriptions.",
+			"version":     appVersion,
+			"logo":        fmt.Sprintf("%s://%s/public/assets/icon.png", scheme, c.Request.Host),
+		})
+	})
 
 	// Serve uploaded assets (e.g. profile images) from the public directory.
 	router.Static("/public", publicDir)
